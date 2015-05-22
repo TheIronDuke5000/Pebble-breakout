@@ -80,6 +80,7 @@ static int16_t s_paddle_velocity;
 static const int16_t S_PADDLE_MAX_SPEED = 8;
 static const int16_t S_BALL_TIME_PER_DIST = 10;
 static Layer **s_block_layer_array;
+static uint16_t s_num_blocks;
 
 typedef enum  {
   WALL_VERT,
@@ -200,6 +201,7 @@ static ball_reflection_type ball_reflection(GRect *ball_rect, int16_t *new_ball_
   GRect next_rect = init_rect;
   *new_ball_dir_angle = s_ball_dir_angle;
 
+
   for (i = 0; i < 200; i++) {
     if (maxIsX) {
       next_rect.origin.x += ball_dir.x / ball_dir_abs_x;
@@ -246,7 +248,34 @@ static ball_reflection_type ball_reflection(GRect *ball_rect, int16_t *new_ball_
       // hit the line where the paddle should be
       *ball_rect = next_rect;
       return PADDLE_PHANTOM;
+    } else {
+      // check blocks
+      GRect block_frame;
+      bool is_block_alive;
+      uint8_t *block_data;
+      for (int j = 0; j < s_num_blocks; j++) {
+        block_data = layer_get_data(s_block_layer_array[j]);
+        is_block_alive = (*block_data) > 0;
+        if (is_block_alive) {
+          block_frame = layer_get_frame(s_block_layer_array[j]);
+          if ((next_rect.origin.y == block_frame.origin.y + block_frame.size.h ||
+               next_rect.origin.y + next_rect.size.h == block_frame.origin.y) &&
+              next_rect.origin.x < block_frame.origin.x + block_frame.size.w &&
+              next_rect.origin.x + next_rect.size.w > block_frame.origin.x) {
+            *new_ball_dir_angle = reflect_angle_X(*new_ball_dir_angle);
+            return BLOCK_HORZ;
+          } else if (next_rect.origin.y < block_frame.origin.y + block_frame.size.h &&
+                     next_rect.origin.y + next_rect.size.h > block_frame.origin.y &&
+                     (next_rect.origin.x == block_frame.origin.x + block_frame.size.w ||
+                     next_rect.origin.x + next_rect.size.w == block_frame.origin.x)) {
+            *new_ball_dir_angle = reflect_angle_Y(*new_ball_dir_angle);
+            return BLOCK_VERT;
+          }
+        }
+      }
     }
+
+
     *ball_rect = next_rect;
   }
   return NO_REFLECT;
@@ -308,21 +337,22 @@ static void load_map_from_file() {
   char *s_buffer = (char*)malloc(res_size);
   resource_load(handle, (uint8_t*)s_buffer, res_size);
 
-  int16_t num_blocks = res_size / 3;
+  s_num_blocks = res_size / 3;
 
   free(s_block_layer_array);
   s_block_layer_array = NULL;
 
-  s_block_layer_array = (Layer **)malloc(num_blocks*(sizeof(Layer *)));
+  s_block_layer_array = (Layer **)malloc(s_num_blocks*(sizeof(Layer *)));
 
   GRect block_rect = (GRect) { .origin = {0, 0}, .size = {10, 5}};
 
+  // create blocks
   int16_t i;
-  for (i = 0; i < num_blocks; i++) {
+  for (i = 0; i < s_num_blocks; i++) {
     block_rect.origin.x = s_buffer[i*3 + 1];
     block_rect.origin.y = s_buffer[i*3 + 2];
     Layer *new_block_layer = layer_create_with_data(block_rect, 1);
-    uint8_t *layer_data = layer_get_data(new_block_layer);
+    uint8_t *layer_data = (uint8_t *)layer_get_data(new_block_layer);
     *layer_data = s_buffer[i*3];
     layer_set_update_proc(new_block_layer, block_layer_draw);
     layer_add_child(s_main_layer, new_block_layer);
@@ -348,7 +378,7 @@ static void window_load(Window *window) {
   text_layer_set_text_alignment(s_text_layer, GTextAlignmentCenter);
   layer_add_child(s_main_layer, text_layer_get_layer(s_text_layer));
 
-  s_ball_layer = layer_create((GRect) { .origin = {20, 20}, .size = {5, 5} });
+  s_ball_layer = layer_create((GRect) { .origin = {10, 20}, .size = {5, 5} });
   layer_set_update_proc(s_ball_layer, ball_layer_draw);
   layer_add_child(s_main_layer, s_ball_layer);
 
