@@ -1,0 +1,46 @@
+!_TAG_FILE_SORTED	1	/0=unsorted, 1=sorted, 2=foldcase/
+!_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
+!_TAG_PROGRAM_VERSION	5.9~svn20110310	//
+!_TAG_PROGRAM_AUTHOR	Darren Hiebert	/dhiebert@users.sourceforge.net/
+!_TAG_PROGRAM_NAME	Exuberant Ctags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+BLOCK_HORZ	pebble-arcanoid.c	/^  BLOCK_HORZ,$/;"	e	enum:__anon1	file:
+BLOCK_VERT	pebble-arcanoid.c	/^  BLOCK_VERT,$/;"	e	enum:__anon1	file:
+DEATH	pebble-arcanoid.c	/^  DEATH,$/;"	e	enum:__anon1	file:
+IMMINENT_DEATH	pebble-arcanoid.c	/^  IMMINENT_DEATH,$/;"	e	enum:__anon1	file:
+NO_REFLECT	pebble-arcanoid.c	/^  NO_REFLECT$/;"	e	enum:__anon1	file:
+PADDLE_HIT	pebble-arcanoid.c	/^  PADDLE_HIT,$/;"	e	enum:__anon1	file:
+PADDLE_PHANTOM	pebble-arcanoid.c	/^  PADDLE_PHANTOM,$/;"	e	enum:__anon1	file:
+S_BALL_TIME_PER_DIST	pebble-arcanoid.c	/^static const int16_t S_BALL_TIME_PER_DIST = 10;$/;"	v	file:
+S_PADDLE_MAX_SPEED	pebble-arcanoid.c	/^static const int16_t S_PADDLE_MAX_SPEED = 8;$/;"	v	file:
+WALL_HORZ	pebble-arcanoid.c	/^  WALL_HORZ,$/;"	e	enum:__anon1	file:
+WALL_VERT	pebble-arcanoid.c	/^  WALL_VERT,$/;"	e	enum:__anon1	file:
+anim_stopped_handler	pebble-arcanoid.c	/^static void anim_stopped_handler(Animation *animation, bool finished, void *context) {$/;"	f	file:
+ball_layer_draw	pebble-arcanoid.c	/^static void ball_layer_draw(Layer *layer, GContext *ctx) {$/;"	f	file:
+ball_reflection	pebble-arcanoid.c	/^static ball_reflection_type ball_reflection(GRect *ball_rect, int16_t *new_ball_dir_angle) {$/;"	f	file:
+ball_reflection_type	pebble-arcanoid.c	/^} ball_reflection_type;$/;"	t	typeref:enum:__anon1	file:
+bot_btn_rep_handler	pebble-arcanoid.c	/^static void bot_btn_rep_handler(ClickRecognizerRef recognizer, void *context) {$/;"	f	file:
+click_config_provider	pebble-arcanoid.c	/^static void click_config_provider(void *context) {$/;"	f	file:
+deinit	pebble-arcanoid.c	/^static void deinit(void) {$/;"	f	file:
+get_ball_dir_point	pebble-arcanoid.c	/^static GPoint get_ball_dir_point() {$/;"	f	file:
+init	pebble-arcanoid.c	/^static void init(void) {$/;"	f	file:
+main	pebble-arcanoid.c	/^int main(void) {$/;"	f
+max	pebble-arcanoid.c	/^static int16_t max(int16_t a, int16_t b) {$/;"	f	file:
+min	pebble-arcanoid.c	/^static int16_t min(int16_t a, int16_t b) {$/;"	f	file:
+move_paddle	pebble-arcanoid.c	/^static void move_paddle() {$/;"	f	file:
+next_animation	pebble-arcanoid.c	/^static void next_animation() {$/;"	f	file:
+paddle_layer_draw	pebble-arcanoid.c	/^static void paddle_layer_draw(Layer *layer, GContext *ctx) {$/;"	f	file:
+reflect_angle_X	pebble-arcanoid.c	/^static int16_t reflect_angle_X(int16_t angle) {$/;"	f	file:
+reflect_angle_Y	pebble-arcanoid.c	/^static int16_t reflect_angle_Y(int16_t angle) {$/;"	f	file:
+s_ball_animation	pebble-arcanoid.c	/^static PropertyAnimation *s_ball_animation;$/;"	v	file:
+s_ball_dir_angle	pebble-arcanoid.c	/^static int16_t s_ball_dir_angle;$/;"	v	file:
+s_ball_layer	pebble-arcanoid.c	/^static Layer *s_ball_layer;$/;"	v	file:
+s_main_layer	pebble-arcanoid.c	/^static Layer *s_main_layer;$/;"	v	file:
+s_main_window	pebble-arcanoid.c	/^static Window *s_main_window;$/;"	v	file:
+s_paddle_layer	pebble-arcanoid.c	/^static Layer *s_paddle_layer;$/;"	v	file:
+s_paddle_velocity	pebble-arcanoid.c	/^static int16_t s_paddle_velocity;$/;"	v	file:
+s_text_layer	pebble-arcanoid.c	/^static TextLayer *s_text_layer;$/;"	v	file:
+select_click_handler	pebble-arcanoid.c	/^static void select_click_handler(ClickRecognizerRef recognizer, void *context) {$/;"	f	file:
+top_btn_rep_handler	pebble-arcanoid.c	/^static void top_btn_rep_handler(ClickRecognizerRef recognizer, void *context) {$/;"	f	file:
+window_load	pebble-arcanoid.c	/^static void window_load(Window *window) {$/;"	f	file:
+window_unload	pebble-arcanoid.c	/^static void window_unload(Window *window) {$/;"	f	file:

@@ -1,0 +1,24 @@
+{
+  "uuid": "c3401829-7aa5-464d-926d-6c4c5ce6db1d",
+  "shortName": "pebble-breakout",
+  "longName": "pebble-breakout",
+  "companyName": "Iron Duke Industries",
+  "versionLabel": "1.0",
+  "sdkVersion": "3",
+  "targetPlatforms": ["aplite", "basalt"],
+  "watchapp": {
+    "watchface": false
+  },
+  "appKeys": {
+    "dummy": 0
+  },
+  "resources": {
+    "media": [
+        {
+          "name": "MAP1",
+          "file": "map1.dat",
+          "type": "raw"
+        }
+      ]
+  }
+}
