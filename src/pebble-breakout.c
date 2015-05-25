@@ -69,6 +69,10 @@
 
 #include <pebble.h>
 
+static Window *s_menu_window;
+static SimpleMenuLayer *s_menu_layer;
+static SimpleMenuSection s_menu_section;
+static SimpleMenuItem s_menu_items[2];
 static Window *s_main_window;
 static Layer *s_main_layer;
 static TextLayer *s_text_layer;
@@ -79,7 +83,7 @@ static Layer *s_paddle_layer;
 static int16_t s_paddle_velocity;
 static const int16_t S_PADDLE_MAX_SPEED = 8;
 static const int16_t S_HOLD_AIM_INC = TRIG_MAX_ANGLE/0x30;
-static const int16_t S_BALL_TIME_PER_DIST = 10;
+static const int16_t S_BALL_TIME_PER_DIST = 12;
 static Layer **s_block_layer_array;
 static uint16_t s_num_blocks;
 static Layer *s_aim_layer;
@@ -138,7 +142,16 @@ static int16_t reflect_angle_Y(int16_t angle) {
   return angle;
 }
 
-static void next_animation();
+static void free_block_array() {
+  for (int i = 0; i < s_num_blocks; i++) {
+    layer_destroy(s_block_layer_array[i]);
+  }
+  free(s_block_layer_array);
+  s_block_layer_array = NULL;
+  s_num_blocks = 0;
+}
+
+static void ball_animation();
 
 static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
   text_layer_set_text(s_text_layer, "Select");
@@ -148,7 +161,7 @@ static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
     int16_t *aim_angle = layer_get_data(s_aim_layer);
     s_ball_dir_angle = *aim_angle;
     s_is_holding_ball = false;
-    next_animation();
+    ball_animation();
   } else if (s_power_up == LASER) {
     // TODO: shoot laser
   }
@@ -282,8 +295,7 @@ static void paddle_layer_draw(Layer *layer, GContext *ctx) {
   graphics_fill_rect(ctx, bounds, bounds.size.h/2, GCornersAll);
 }
 
-static ball_reflection_type ball_reflection
-    (GRect *ball_rect, int16_t *new_ball_dir_angle, bool hit) {
+static ball_reflection_type ball_reflection(GRect *ball_rect, int16_t *new_ball_dir_angle, bool hit) {
   int i;
   GPoint ball_dir = get_ball_dir_point();
   int16_t ball_dir_abs_x = abs(ball_dir.x);
@@ -401,6 +413,7 @@ static void anim_stopped_handler(Animation *animation, bool finished, void *cont
     ball_reflection_type reflect_type = ball_reflection(&ball_rect, &new_ball_dir_angle, true);
     if (reflect_type == DEATH) {
       text_layer_set_text(s_text_layer, "DEATH");
+      window_stack_pop(true);
     } else if (reflect_type == PADDLE_HIT && s_power_up == HOLD) {
       GRect aim_rect = layer_get_frame(s_aim_layer);
       GRect ball_rect = layer_get_frame(s_ball_layer);
@@ -410,12 +423,12 @@ static void anim_stopped_handler(Animation *animation, bool finished, void *cont
       s_is_holding_ball = true;
     } else {
       s_ball_dir_angle = new_ball_dir_angle;
-      next_animation();
+      ball_animation();
     }
   }
 }
 
-static void next_animation() {
+static void ball_animation() {
   // Determine start and finish positions
   GRect start, finish;
   int16_t new_ball_dir_angle;
@@ -443,6 +456,9 @@ static void next_animation() {
 }
 
 static void load_map_from_file() {
+  
+  free_block_array();
+
   // Get resource and size
   ResHandle handle = resource_get_handle(RESOURCE_ID_MAP1);
   size_t res_size = resource_size(handle);
@@ -453,8 +469,6 @@ static void load_map_from_file() {
 
   s_num_blocks = res_size / 3;
 
-  free(s_block_layer_array);
-  s_block_layer_array = NULL;
 
   s_block_layer_array = (Layer **)malloc(s_num_blocks*(sizeof(Layer *)));
 
@@ -472,9 +486,12 @@ static void load_map_from_file() {
     layer_add_child(s_main_layer, new_block_layer);
     s_block_layer_array[i] = new_block_layer;
   }
+
+  free(s_buffer);
 }
 
-static void window_load(Window *window) {
+static void game_window_load(Window *window) {
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "game load");
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
 
@@ -492,11 +509,7 @@ static void window_load(Window *window) {
   text_layer_set_text_alignment(s_text_layer, GTextAlignmentCenter);
   layer_add_child(s_main_layer, text_layer_get_layer(s_text_layer));
 
-  #ifdef PBL_PLATFORM_BASALT
-    int16_t paddle_origin_y = 160;
-  #else
-    int16_t paddle_origin_y = 145;
-  #endif
+  int16_t paddle_origin_y = 160;
 
   s_ball_layer = layer_create((GRect) {
     .origin = {113, paddle_origin_y-5},
@@ -522,34 +535,89 @@ static void window_load(Window *window) {
   layer_add_child(s_main_layer, s_aim_layer);
 
   load_map_from_file();
-}
-
-static void window_unload(Window *window) {
-  layer_destroy(s_main_layer);
-}
-
-static void init(void) {
-  s_main_window = window_create();
-  window_set_click_config_provider(s_main_window, click_config_provider);
-  window_set_window_handlers(s_main_window, (WindowHandlers) {
-    .load = window_load,
-    .unload = window_unload,
-  });
-  const bool animated = true;
-  window_stack_push(s_main_window, animated);
 
   s_ball_dir_angle = TRIG_MAX_ANGLE/8;
 
-  s_power_up = HOLD;
+  s_power_up = FIRST_BALL_HOLD;
   s_is_holding_ball = true;
+
+}
+
+static void game_window_unload(Window *window) {
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "game unload");
+
+  animation_unschedule_all();
+
+  layer_destroy((Layer *)s_text_layer);
+  layer_destroy(s_ball_layer);
+  layer_destroy(s_paddle_layer);
+  layer_destroy(s_aim_layer);
+
+  free_block_array();
+  layer_destroy(s_main_layer);
+}
+
+void menu_callback(int index, void *context) {
+  window_stack_push(s_main_window, true);
+}
+
+static void menu_window_load(Window *window) {
+  Layer *window_layer = window_get_root_layer(window);
+  GRect bounds = layer_get_bounds(window_layer);
+
+  s_menu_items[0].title = "New Game";
+  s_menu_items[0].callback = menu_callback;
+
+  s_menu_items[1].title = "Resume";
+
+  s_menu_section.items = s_menu_items;
+  s_menu_section.num_items = 2;
+
+  s_menu_layer = simple_menu_layer_create((GRect) {
+    .origin = {0, 0},
+    .size = bounds.size
+  }, window, &s_menu_section, 1, NULL);
+
+  layer_add_child(window_layer, (Layer *)s_menu_layer);
+}
+
+static void menu_window_unload(Window *window) {
+  simple_menu_layer_destroy(s_menu_layer);
+}
+
+static void init(void) {
+  s_menu_window = window_create();
+
+  s_main_window = window_create();
+
+  #ifdef PBL_PLATFORM_APLITE
+    window_set_fullscreen(s_main_window, true);
+  #endif
+
+  window_set_click_config_provider(s_main_window, click_config_provider);
+  window_set_window_handlers(s_main_window, (WindowHandlers) {
+    .load = game_window_load,
+    .unload = game_window_unload,
+  });
+
+  window_set_window_handlers(s_menu_window, (WindowHandlers) {
+    .load = menu_window_load,
+    .unload = menu_window_unload,
+  });
+
+  const bool animated = true;
+  window_stack_push(s_menu_window, animated);
 }
 
 static void deinit(void) {
   // Stop any animation in progress
   animation_unschedule_all();
 
+  free_block_array();
+
   // Destroy main Window
   window_destroy(s_main_window);
+  window_destroy(s_menu_window);
 }
 
 int main(void) {
