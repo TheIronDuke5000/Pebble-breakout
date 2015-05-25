@@ -89,8 +89,8 @@ static uint16_t s_num_blocks;
 static Layer *s_aim_layer;
 static bool is_resume;
 
-#define P_PADDLE_KEY 0        // uint8_t for x value of origin of paddle layer
-#define P_BALL_KEY 1          // 2 int16_t saved into a single uint32_t for ball origin; x is MSB, y is LSB
+#define P_PADDLE_KEY 0        // int for x value of origin of paddle layer
+#define P_BALL_DATA_KEY 1     // array of 3 int16_t, [x, y, angle]    2 bytes per int16_t * 3 = 6 bytes 
 #define P_POWERUP_KEY 2       // power_up_type saved as an int
 #define P_BLOCKS_DATA_KEY 4   // array of bytes with the same format as the file (HH XX YY) HH is the nubmer of hits remaining
 
@@ -495,37 +495,74 @@ static void load_map_from_resource() {
   free(buffer);
 }
 
-static bool load_map_from_persist() {
+// returns 0 for success, 1 for complete fail, 2 for partial fail
+static uint8_t load_resume_data_from_persist() {
   if (persist_exists(P_BLOCKS_DATA_KEY)) {
     free_block_array();
 
     uint8_t res_size = persist_get_size(P_BLOCKS_DATA_KEY);
 
     uint8_t *buffer = (uint8_t*)malloc(res_size);
-    persist_read_data(P_BLOCKS_DATA_KEY, buffer, res_size);
+    s_num_blocks = persist_read_data(P_BLOCKS_DATA_KEY, buffer, res_size) / 3;
 
     load_map_from_buffer(buffer, res_size);
+
     free(buffer);
+
+    if (persist_exists(P_BALL_DATA_KEY)) {
+      int16_t ball_buff[3];
+      persist_read_data(P_BALL_DATA_KEY, ball_buff, 6);
+      GRect frame = layer_get_frame(s_ball_layer);
+      frame.origin.x = ball_buff[0];
+      frame.origin.y = ball_buff[1];
+      s_ball_dir_angle = ball_buff[2];
+      layer_set_frame(s_ball_layer, frame);
+    }
+
+    if (persist_exists(P_PADDLE_KEY)) {
+      GRect frame = layer_get_frame(s_paddle_layer);
+      frame.origin.x = persist_read_int(P_PADDLE_KEY);
+      layer_set_frame(s_paddle_layer, frame);
+    }
+
+    if (persist_exists(P_POWERUP_KEY)) {
+      s_power_up = (power_up_type) persist_read_int(P_POWERUP_KEY);
+    }
+
     return true;
   } else {
     return false;
   }
 }
 
-static void persist_map() {
-  uint8_t res_size = s_num_blocks*3;
-  char *buffer = (char *)malloc(res_size);
+static void persist_resume_data() {
+  if (s_num_blocks > 0) {
+    uint8_t res_size = s_num_blocks*3;
+    char *buffer = (char *)malloc(res_size);
 
-  for (int i = 0; i < s_num_blocks; i++) {
-    uint8_t *layer_data = layer_get_data(s_block_layer_array[i]);
-    GRect frame = layer_get_frame(s_block_layer_array[i]);
-    buffer[i*3] = *layer_data;
-    buffer[i*3+1] = frame.origin.x;
-    buffer[i*3+2] = frame.origin.y;
+    for (int i = 0; i < s_num_blocks; i++) {
+      uint8_t *layer_data = layer_get_data(s_block_layer_array[i]);
+      GRect frame = layer_get_frame(s_block_layer_array[i]);
+      buffer[i*3] = *layer_data;
+      buffer[i*3+1] = frame.origin.x;
+      buffer[i*3+2] = frame.origin.y;
+    }
+
+    persist_write_data(P_BLOCKS_DATA_KEY, buffer, res_size);
+    free(buffer);
+
+    int16_t ball_buff[3];
+    GRect ball_frame = layer_get_frame(s_ball_layer);
+    ball_buff[0] = ball_frame.origin.x;
+    ball_buff[1] = ball_frame.origin.y;
+    ball_buff[2] = s_ball_dir_angle;
+    persist_write_data(P_BALL_DATA_KEY, ball_buff, 6);
+
+    GRect paddle_frame = layer_get_frame(s_paddle_layer);
+    persist_write_int(P_PADDLE_KEY, (int)paddle_frame.origin.x);
+
+    persist_write_int(P_POWERUP_KEY, (int)s_power_up);
   }
-
-  persist_write_data(P_BLOCKS_DATA_KEY, buffer, res_size);
-  free(buffer);
 }
 
 static void game_window_load(Window *window) {
@@ -572,19 +609,17 @@ static void game_window_load(Window *window) {
   layer_set_update_proc(s_aim_layer, aim_layer_draw);
   layer_add_child(s_main_layer, s_aim_layer);
 
-  if (is_resume) {
-    if (!load_map_from_persist()) {
-      // window_stack_pop(true);
-    }
+  if (is_resume && load_resume_data_from_persist()) {
+    s_is_holding_ball = false;
+    layer_set_hidden(s_aim_layer, true);
+    ball_animation();
   } else {
     load_map_from_resource();
+
+    s_ball_dir_angle = TRIG_MAX_ANGLE/8;
+    s_power_up = FIRST_BALL_HOLD;
+    s_is_holding_ball = true;
   }
-
-  s_ball_dir_angle = TRIG_MAX_ANGLE/8;
-
-  s_power_up = FIRST_BALL_HOLD;
-  s_is_holding_ball = true;
-
 }
 
 static void game_window_unload(Window *window) {
@@ -592,7 +627,7 @@ static void game_window_unload(Window *window) {
 
   animation_unschedule_all();
 
-  persist_map();
+  persist_resume_data();
 
   layer_destroy((Layer *)s_text_layer);
   layer_destroy(s_ball_layer);
@@ -609,22 +644,23 @@ void menu_new_game_callback(int index, void *context) {
 }
 
 void menu_resume_callback(int index, void *context) {
-  is_resume = true;
-  window_stack_push(s_main_window, true);
+  if (persist_exists(P_BLOCKS_DATA_KEY)) {
+    is_resume = true;
+    window_stack_push(s_main_window, true);
+  }
 }
 
 static void menu_window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
 
-  s_menu_items[0].title = "New Game";
-  s_menu_items[0].callback = menu_new_game_callback;
+  s_menu_items[0].title = "Resume";
+  s_menu_items[0].callback = menu_resume_callback;
 
-  s_menu_items[1].title = "Resume";
-  s_menu_items[1].callback = menu_resume_callback;
-
-  s_menu_section.items = s_menu_items;
+  s_menu_items[1].title = "New Game";
+  s_menu_items[1].callback = menu_new_game_callback;
   s_menu_section.num_items = 2;
+  s_menu_section.items = s_menu_items;
 
   s_menu_layer = simple_menu_layer_create((GRect) {
     .origin = {0, 0},
