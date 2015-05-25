@@ -87,8 +87,14 @@ static const int16_t S_BALL_TIME_PER_DIST = 12;
 static Layer **s_block_layer_array;
 static uint16_t s_num_blocks;
 static Layer *s_aim_layer;
+static bool is_resume;
 
-typedef enum  {
+#define P_PADDLE_KEY 0        // uint8_t for x value of origin of paddle layer
+#define P_BALL_KEY 1          // 2 int16_t saved into a single uint32_t for ball origin; x is MSB, y is LSB
+#define P_POWERUP_KEY 2       // power_up_type saved as an int
+#define P_BLOCKS_DATA_KEY 4   // array of bytes with the same format as the file (HH XX YY) HH is the nubmer of hits remaining
+
+typedef enum {
   WALL_VERT,
   WALL_HORZ,
   PADDLE_HIT,
@@ -101,11 +107,11 @@ typedef enum  {
 } ball_reflection_type;
 
 typedef enum {
-  NONE,
-  FIRST_BALL_HOLD,
-  HOLD,
-  LASER,
-  WIDE_PADDLE
+  NONE = 0,
+  FIRST_BALL_HOLD = 1,
+  HOLD = 2,
+  LASER = 3,
+  WIDE_PADDLE = 4
 } power_up_type;
 
 static power_up_type s_power_up;
@@ -455,20 +461,8 @@ static void ball_animation() {
   // Increment stage and wrap
 }
 
-static void load_map_from_file() {
-  
-  free_block_array();
-
-  // Get resource and size
-  ResHandle handle = resource_get_handle(RESOURCE_ID_MAP1);
-  size_t res_size = resource_size(handle);
-
-  // Copy to buffer
-  char *s_buffer = (char*)malloc(res_size);
-  resource_load(handle, (uint8_t*)s_buffer, res_size);
-
-  s_num_blocks = res_size / 3;
-
+static void load_map_from_buffer(uint8_t *buffer, uint8_t buffer_len) {
+  s_num_blocks = buffer_len / 3;
 
   s_block_layer_array = (Layer **)malloc(s_num_blocks*(sizeof(Layer *)));
 
@@ -477,17 +471,61 @@ static void load_map_from_file() {
   // create blocks
   int16_t i;
   for (i = 0; i < s_num_blocks; i++) {
-    block_rect.origin.x = s_buffer[i*3 + 1];
-    block_rect.origin.y = s_buffer[i*3 + 2];
+    block_rect.origin.x = buffer[i*3 + 1];
+    block_rect.origin.y = buffer[i*3 + 2];
     Layer *new_block_layer = layer_create_with_data(block_rect, 1);
     uint8_t *layer_data = (uint8_t *)layer_get_data(new_block_layer);
-    *layer_data = s_buffer[i*3];
+    *layer_data = buffer[i*3];
     layer_set_update_proc(new_block_layer, block_layer_draw);
     layer_add_child(s_main_layer, new_block_layer);
     s_block_layer_array[i] = new_block_layer;
   }
+}
 
-  free(s_buffer);
+static void load_map_from_resource() {
+  free_block_array();
+
+  // Get resource and size
+  ResHandle handle = resource_get_handle(RESOURCE_ID_MAP1);
+  uint8_t res_size = (uint8_t)resource_size(handle);
+  uint8_t *buffer = (uint8_t*)malloc(res_size);
+  resource_load(handle, buffer, res_size);
+
+  load_map_from_buffer(buffer, res_size);
+  free(buffer);
+}
+
+static bool load_map_from_persist() {
+  if (persist_exists(P_BLOCKS_DATA_KEY)) {
+    free_block_array();
+
+    uint8_t res_size = persist_get_size(P_BLOCKS_DATA_KEY);
+
+    uint8_t *buffer = (uint8_t*)malloc(res_size);
+    persist_read_data(P_BLOCKS_DATA_KEY, buffer, res_size);
+
+    load_map_from_buffer(buffer, res_size);
+    free(buffer);
+    return true;
+  } else {
+    return false;
+  }
+}
+
+static void persist_map() {
+  uint8_t res_size = s_num_blocks*3;
+  char *buffer = (char *)malloc(res_size);
+
+  for (int i = 0; i < s_num_blocks; i++) {
+    uint8_t *layer_data = layer_get_data(s_block_layer_array[i]);
+    GRect frame = layer_get_frame(s_block_layer_array[i]);
+    buffer[i*3] = *layer_data;
+    buffer[i*3+1] = frame.origin.x;
+    buffer[i*3+2] = frame.origin.y;
+  }
+
+  persist_write_data(P_BLOCKS_DATA_KEY, buffer, res_size);
+  free(buffer);
 }
 
 static void game_window_load(Window *window) {
@@ -534,7 +572,13 @@ static void game_window_load(Window *window) {
   layer_set_update_proc(s_aim_layer, aim_layer_draw);
   layer_add_child(s_main_layer, s_aim_layer);
 
-  load_map_from_file();
+  if (is_resume) {
+    if (!load_map_from_persist()) {
+      // window_stack_pop(true);
+    }
+  } else {
+    load_map_from_resource();
+  }
 
   s_ball_dir_angle = TRIG_MAX_ANGLE/8;
 
@@ -548,6 +592,8 @@ static void game_window_unload(Window *window) {
 
   animation_unschedule_all();
 
+  persist_map();
+
   layer_destroy((Layer *)s_text_layer);
   layer_destroy(s_ball_layer);
   layer_destroy(s_paddle_layer);
@@ -557,7 +603,13 @@ static void game_window_unload(Window *window) {
   layer_destroy(s_main_layer);
 }
 
-void menu_callback(int index, void *context) {
+void menu_new_game_callback(int index, void *context) {
+  is_resume = false;
+  window_stack_push(s_main_window, true);
+}
+
+void menu_resume_callback(int index, void *context) {
+  is_resume = true;
   window_stack_push(s_main_window, true);
 }
 
@@ -566,9 +618,10 @@ static void menu_window_load(Window *window) {
   GRect bounds = layer_get_bounds(window_layer);
 
   s_menu_items[0].title = "New Game";
-  s_menu_items[0].callback = menu_callback;
+  s_menu_items[0].callback = menu_new_game_callback;
 
   s_menu_items[1].title = "Resume";
+  s_menu_items[1].callback = menu_resume_callback;
 
   s_menu_section.items = s_menu_items;
   s_menu_section.num_items = 2;
