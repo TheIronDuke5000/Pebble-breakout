@@ -100,7 +100,8 @@ typedef enum {
   NONE,
   FIRST_BALL_HOLD,
   HOLD,
-  LASER
+  LASER,
+  WIDE_PADDLE
 } power_up_type;
 
 static power_up_type s_power_up;
@@ -170,7 +171,15 @@ static void move_paddle(ClickRecognizerRef recognizer) {
 
   s_paddle_velocity *= dirSign;
   GRect frame = layer_get_frame(s_paddle_layer);
-  frame.origin.x += s_paddle_velocity;
+  GRect main_frame = layer_get_frame(s_main_layer);
+
+  int16_t new_x = frame.origin.x + s_paddle_velocity;
+  if (new_x < 0) {
+    new_x = 0;
+  } else if (new_x + frame.size.w > main_frame.size.w) {
+    new_x = main_frame.size.w - frame.size.w;
+  }
+  frame.origin.x = new_x;
   layer_set_frame(s_paddle_layer, frame);
   layer_mark_dirty(s_paddle_layer);
 }
@@ -270,7 +279,7 @@ static void paddle_layer_draw(Layer *layer, GContext *ctx) {
   #endif
 
   graphics_context_set_fill_color(ctx, paddle_color);
-  graphics_fill_rect(ctx, bounds, bounds.size.h, GCornersAll);
+  graphics_fill_rect(ctx, bounds, bounds.size.h/2, GCornersAll);
 }
 
 static ball_reflection_type ball_reflection(GRect *ball_rect, int16_t *new_ball_dir_angle, bool hit) {
