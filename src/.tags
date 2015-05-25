@@ -10,19 +10,21 @@ DEATH	pebble-breakout.c	/^  DEATH,$/;"	e	enum:__anon1	file:
 FIRST_BALL_HOLD	pebble-breakout.c	/^  FIRST_BALL_HOLD,$/;"	e	enum:__anon2	file:
 HOLD	pebble-breakout.c	/^  HOLD,$/;"	e	enum:__anon2	file:
 IMMINENT_DEATH	pebble-breakout.c	/^  IMMINENT_DEATH,$/;"	e	enum:__anon1	file:
-LASER	pebble-breakout.c	/^  LASER$/;"	e	enum:__anon2	file:
+LASER	pebble-breakout.c	/^  LASER,$/;"	e	enum:__anon2	file:
 NONE	pebble-breakout.c	/^  NONE,$/;"	e	enum:__anon2	file:
 NO_REFLECT	pebble-breakout.c	/^  NO_REFLECT$/;"	e	enum:__anon1	file:
 PADDLE_HIT	pebble-breakout.c	/^  PADDLE_HIT,$/;"	e	enum:__anon1	file:
 PADDLE_PHANTOM	pebble-breakout.c	/^  PADDLE_PHANTOM,$/;"	e	enum:__anon1	file:
 S_BALL_TIME_PER_DIST	pebble-breakout.c	/^static const int16_t S_BALL_TIME_PER_DIST = 10;$/;"	v	file:
+S_HOLD_AIM_INC	pebble-breakout.c	/^static const int16_t S_HOLD_AIM_INC = TRIG_MAX_ANGLE\/32;$/;"	v	file:
 S_PADDLE_MAX_SPEED	pebble-breakout.c	/^static const int16_t S_PADDLE_MAX_SPEED = 8;$/;"	v	file:
 WALL_HORZ	pebble-breakout.c	/^  WALL_HORZ,$/;"	e	enum:__anon1	file:
 WALL_VERT	pebble-breakout.c	/^  WALL_VERT,$/;"	e	enum:__anon1	file:
+WIDE_PADDLE	pebble-breakout.c	/^  WIDE_PADDLE$/;"	e	enum:__anon2	file:
 aim_layer_draw	pebble-breakout.c	/^static void aim_layer_draw(Layer *layer, GContext *ctx) {$/;"	f	file:
 anim_stopped_handler	pebble-breakout.c	/^static void anim_stopped_handler(Animation *animation, bool finished, void *context) {$/;"	f	file:
 ball_layer_draw	pebble-breakout.c	/^static void ball_layer_draw(Layer *layer, GContext *ctx) {$/;"	f	file:
-ball_reflection	pebble-breakout.c	/^static ball_reflection_type ball_reflection(GRect *ball_rect, int16_t *new_ball_dir_angle, bool hit) {$/;"	f	file:
+ball_reflection	pebble-breakout.c	/^static ball_reflection_type ball_reflection$/;"	f	file:
 ball_reflection_type	pebble-breakout.c	/^} ball_reflection_type;$/;"	t	typeref:enum:__anon1	file:
 block_layer_draw	pebble-breakout.c	/^static void block_layer_draw(Layer *layer, GContext *ctx) {$/;"	f	file:
 btn_rep_handler	pebble-breakout.c	/^static void btn_rep_handler(ClickRecognizerRef recognizer, void *context) {$/;"	f	file:
