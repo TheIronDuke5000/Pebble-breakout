@@ -78,9 +78,11 @@ static PropertyAnimation *s_ball_animation;
 static Layer *s_paddle_layer;
 static int16_t s_paddle_velocity;
 static const int16_t S_PADDLE_MAX_SPEED = 8;
+static const int16_t S_HOLD_AIM_INC = TRIG_MAX_ANGLE/32;
 static const int16_t S_BALL_TIME_PER_DIST = 10;
 static Layer **s_block_layer_array;
 static uint16_t s_num_blocks;
+static Layer *s_aim_layer;
 
 typedef enum  {
   WALL_VERT,
@@ -94,6 +96,15 @@ typedef enum  {
   NO_REFLECT
 } ball_reflection_type;
 
+typedef enum {
+  NONE,
+  FIRST_BALL_HOLD,
+  HOLD,
+  LASER
+} power_up_type;
+
+static power_up_type s_power_up;
+static bool s_is_holding_ball;
 
 static int16_t max(int16_t a, int16_t b) {
   if (a > b) {
@@ -126,50 +137,107 @@ static int16_t reflect_angle_Y(int16_t angle) {
   return angle;
 }
 
+static void next_animation();
+
 static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
   text_layer_set_text(s_text_layer, "Select");
+
+  if ((s_power_up == HOLD || s_power_up == FIRST_BALL_HOLD) && s_is_holding_ball) {
+    layer_set_hidden(s_aim_layer, true);
+    int16_t *aim_angle = layer_get_data(s_aim_layer);
+    s_ball_dir_angle = *aim_angle;
+    s_is_holding_ball = false;
+    next_animation();
+  } else if (s_power_up == LASER) {
+    // TODO: shoot laser
+  }
 }
 
-static void move_paddle() {
+static void move_paddle(ClickRecognizerRef recognizer) {
+  int16_t numClicks = click_number_of_clicks_counted(recognizer);
+  ButtonId buttonId = click_recognizer_get_button_id(recognizer);
+  int16_t dirSign = 1;
+  if (buttonId == BUTTON_ID_UP) {
+    dirSign = 1;
+  } else if (buttonId == BUTTON_ID_DOWN) {
+    dirSign = -1;
+  }
+
+  s_paddle_velocity = S_PADDLE_MAX_SPEED;
+  if (numClicks == 1) {
+    s_paddle_velocity = S_PADDLE_MAX_SPEED/2;
+  }
+
+  s_paddle_velocity *= dirSign;
   GRect frame = layer_get_frame(s_paddle_layer);
   frame.origin.x += s_paddle_velocity;
   layer_set_frame(s_paddle_layer, frame);
   layer_mark_dirty(s_paddle_layer);
 }
 
-static void top_btn_rep_handler(ClickRecognizerRef recognizer, void *context) {
-  text_layer_set_text(s_text_layer, "Up Press");
+static void move_aim(ClickRecognizerRef recognizer) {
   int16_t numClicks = click_number_of_clicks_counted(recognizer);
-  if (numClicks == 1) {
-    s_paddle_velocity = -S_PADDLE_MAX_SPEED/2;
-  } else {
-    s_paddle_velocity = -S_PADDLE_MAX_SPEED;
+  ButtonId buttonId = click_recognizer_get_button_id(recognizer);
+  int16_t dirSign = 1;
+  if (buttonId == BUTTON_ID_UP) {
+    dirSign = 1;
+  } else if (buttonId == BUTTON_ID_DOWN) {
+    dirSign = -1;
   }
-  move_paddle();
+
+  int16_t aim_inc = S_HOLD_AIM_INC;
+  if (numClicks == 1) {
+    aim_inc = S_HOLD_AIM_INC/2;
+  }
+
+  aim_inc *= dirSign;
+  int16_t *aim_angle = (int16_t *) layer_get_data(s_aim_layer);
+  int16_t new_angle = *aim_angle + aim_inc;
+  if (new_angle < -TRIG_MAX_ANGLE*1/8 && new_angle > -TRIG_MAX_ANGLE*3/8) {
+    *aim_angle = new_angle;
+  }
+  layer_mark_dirty(s_paddle_layer);
 }
 
-static void bot_btn_rep_handler(ClickRecognizerRef recognizer, void *context) {
-  text_layer_set_text(s_text_layer, "Down Press");
-  int16_t numClicks = click_number_of_clicks_counted(recognizer);
-  if (numClicks == 1) {
-    s_paddle_velocity = S_PADDLE_MAX_SPEED/2;
+static void btn_rep_handler(ClickRecognizerRef recognizer, void *context) {
+  text_layer_set_text(s_text_layer, "Up Press");
+  if ((s_power_up == HOLD || s_power_up == FIRST_BALL_HOLD) && s_is_holding_ball) {
+    move_aim(recognizer);
   } else {
-    s_paddle_velocity = S_PADDLE_MAX_SPEED;
+    move_paddle(recognizer);
   }
-  move_paddle();
 }
 
 static void click_config_provider(void *context) {
   window_single_click_subscribe(BUTTON_ID_SELECT, select_click_handler);
-  window_single_repeating_click_subscribe(BUTTON_ID_UP, 30, top_btn_rep_handler);
-  window_single_repeating_click_subscribe(BUTTON_ID_DOWN, 30, bot_btn_rep_handler);
+  window_single_repeating_click_subscribe(BUTTON_ID_UP, 30, btn_rep_handler);
+  window_single_repeating_click_subscribe(BUTTON_ID_DOWN, 30, btn_rep_handler);
 }
 
 static void block_layer_draw(Layer *layer, GContext *ctx) {
+  uint8_t *block_data = (uint8_t *) layer_get_data(layer);
   GRect bounds = layer_get_bounds(layer);
+  // GRect inner_rect
 
-  graphics_context_set_fill_color(ctx, GColorBlack);
-  graphics_fill_rect(ctx, bounds, 0, GCornersAll);
+
+  if (*block_data > 0) {
+    graphics_context_set_fill_color(ctx, GColorBlack);
+    graphics_fill_rect(ctx, bounds, 0, GCornersAll);
+    graphics_context_set_fill_color(ctx, GColorWhite);
+    bounds.origin.x += 1;
+    bounds.origin.y += 1;
+    bounds.size.w -= 2;
+    bounds.size.h -= 2;
+    graphics_fill_rect(ctx, bounds, 0, GCornersAll);
+    graphics_context_set_fill_color(ctx, GColorBlack);
+    bounds.origin.x += 1;
+    bounds.origin.y += 1;
+    bounds.size.w -= 2;
+    bounds.size.h -= 2;
+    graphics_fill_rect(ctx, bounds, 0, GCornersAll);
+  } else {
+    layer_set_hidden(layer, true);
+  }
 }
 
 static void ball_layer_draw(Layer *layer, GContext *ctx) {
@@ -180,16 +248,32 @@ static void ball_layer_draw(Layer *layer, GContext *ctx) {
   graphics_fill_circle(ctx, GPoint(half_h, half_h), half_h);
 }
 
+static void aim_layer_draw(Layer *layer, GContext *ctx) {
+  GRect bounds = layer_get_bounds(layer);
+  int16_t *aim_angle = (int16_t *) layer_get_data(layer);
+
+  GPoint p0 = GPoint(15, 15);
+  GPoint p1 = GPoint(15 + 15 * cos_lookup(*aim_angle) / TRIG_MAX_RATIO,
+                     15 + 15 * sin_lookup(*aim_angle) / TRIG_MAX_RATIO);
+
+  graphics_context_set_fill_color(ctx, GColorBlack);
+  graphics_draw_line(ctx, p0, p1);
+}
+
 static void paddle_layer_draw(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
 
-  graphics_context_set_fill_color(ctx, GColorBlack);
+  #ifdef PBL_PLATFORM_BASALT
+    GColor8 paddle_color = GColorDukeBlue;
+  #else
+    GColor paddle_color = GColorBlack;
+  #endif
+
+  graphics_context_set_fill_color(ctx, paddle_color);
   graphics_fill_rect(ctx, bounds, bounds.size.h, GCornersAll);
 }
 
-static void next_animation();
-
-static ball_reflection_type ball_reflection(GRect *ball_rect, int16_t *new_ball_dir_angle) {
+static ball_reflection_type ball_reflection(GRect *ball_rect, int16_t *new_ball_dir_angle, bool hit) {
   int i;
   GPoint ball_dir = get_ball_dir_point();
   int16_t ball_dir_abs_x = abs(ball_dir.x);
@@ -217,10 +301,14 @@ static ball_reflection_type ball_reflection(GRect *ball_rect, int16_t *new_ball_
 
     if (next_rect.origin.x < 0 ||
         next_rect.origin.x + next_rect.size.w > arena_bounds.size.w) {
-      *new_ball_dir_angle = reflect_angle_Y(*new_ball_dir_angle);
+      if (hit) {
+        *new_ball_dir_angle = reflect_angle_Y(*new_ball_dir_angle);
+      }
       return WALL_VERT;
     } else if (next_rect.origin.y < 0) {
-      *new_ball_dir_angle = reflect_angle_X(*new_ball_dir_angle);
+      if (hit) {
+        *new_ball_dir_angle = reflect_angle_X(*new_ball_dir_angle);
+      }
       return WALL_HORZ;
     } else if (init_rect.origin.y + init_rect.size.h > arena_bounds.size.h) {
       return DEATH;
@@ -237,11 +325,12 @@ static ball_reflection_type ball_reflection(GRect *ball_rect, int16_t *new_ball_
                  ball_rect->origin.x + ball_rect->size.w > paddle_frame.origin.x)) {
       // hit the actual paddle
       // *ball_rect = next_rect;
-      *new_ball_dir_angle = reflect_angle_X(*new_ball_dir_angle);
-      int16_t dist_from_centre = (next_rect.origin.x + next_rect.size.w/2) -
-                                 (paddle_frame.origin.x + paddle_frame.size.w/2);
-      int16_t angle_diff = (TRIG_MAX_ANGLE/16 * dist_from_centre*2) / paddle_frame.size.w;
-      *new_ball_dir_angle += angle_diff;
+      if (hit) {
+        *new_ball_dir_angle = reflect_angle_X(*new_ball_dir_angle);
+        int16_t dist_from_centre = (next_rect.origin.x + next_rect.size.w/2) -
+                                   (paddle_frame.origin.x + paddle_frame.size.w/2);
+        *new_ball_dir_angle = -TRIG_MAX_ANGLE/4 + (TRIG_MAX_ANGLE/8 * dist_from_centre*2) / paddle_frame.size.w;
+      }
       return PADDLE_HIT;
     } else if (next_rect.origin.y + next_rect.size.h >= paddle_frame.origin.y &&
                ball_rect->origin.y + ball_rect->size.h < paddle_frame.origin.y) {
@@ -254,21 +343,29 @@ static ball_reflection_type ball_reflection(GRect *ball_rect, int16_t *new_ball_
       bool is_block_alive;
       uint8_t *block_data;
       for (int j = 0; j < s_num_blocks; j++) {
-        block_data = layer_get_data(s_block_layer_array[j]);
+        block_data = (uint8_t *)layer_get_data(s_block_layer_array[j]);
         is_block_alive = (*block_data) > 0;
         if (is_block_alive) {
           block_frame = layer_get_frame(s_block_layer_array[j]);
-          if ((next_rect.origin.y == block_frame.origin.y + block_frame.size.h ||
-               next_rect.origin.y + next_rect.size.h == block_frame.origin.y) &&
+          if ((next_rect.origin.y +1 == block_frame.origin.y + block_frame.size.h ||
+               next_rect.origin.y + next_rect.size.h -1 == block_frame.origin.y) &&
               next_rect.origin.x < block_frame.origin.x + block_frame.size.w &&
               next_rect.origin.x + next_rect.size.w > block_frame.origin.x) {
-            *new_ball_dir_angle = reflect_angle_X(*new_ball_dir_angle);
+            if (hit) {
+              *new_ball_dir_angle = reflect_angle_X(*new_ball_dir_angle);
+              (*block_data)--;
+              layer_mark_dirty(s_block_layer_array[j]);
+            }
             return BLOCK_HORZ;
           } else if (next_rect.origin.y < block_frame.origin.y + block_frame.size.h &&
                      next_rect.origin.y + next_rect.size.h > block_frame.origin.y &&
-                     (next_rect.origin.x == block_frame.origin.x + block_frame.size.w ||
-                     next_rect.origin.x + next_rect.size.w == block_frame.origin.x)) {
-            *new_ball_dir_angle = reflect_angle_Y(*new_ball_dir_angle);
+                     (next_rect.origin.x +1 == block_frame.origin.x + block_frame.size.w ||
+                     next_rect.origin.x + next_rect.size.w -1 == block_frame.origin.x)) {
+            if (hit) {
+              *new_ball_dir_angle = reflect_angle_Y(*new_ball_dir_angle);
+              (*block_data)--;
+              layer_mark_dirty(s_block_layer_array[j]);
+            }
             return BLOCK_VERT;
           }
         }
@@ -291,9 +388,16 @@ static void anim_stopped_handler(Animation *animation, bool finished, void *cont
   if (finished) {
     int16_t new_ball_dir_angle;
     GRect ball_rect = layer_get_frame(s_ball_layer);
-    ball_reflection_type reflect_type = ball_reflection(&ball_rect, &new_ball_dir_angle);
+    ball_reflection_type reflect_type = ball_reflection(&ball_rect, &new_ball_dir_angle, true);
     if (reflect_type == DEATH) {
       text_layer_set_text(s_text_layer, "DEATH");
+    } else if (reflect_type == PADDLE_HIT && s_power_up == HOLD) {
+      GRect aim_rect = layer_get_frame(s_aim_layer);
+      GRect ball_rect = layer_get_frame(s_ball_layer);
+      aim_rect.origin.x = ball_rect.origin.x - 13;
+      layer_set_frame(s_aim_layer, aim_rect);
+      layer_set_hidden(s_aim_layer, false);
+      s_is_holding_ball = true;
     } else {
       s_ball_dir_angle = new_ball_dir_angle;
       next_animation();
@@ -310,7 +414,7 @@ static void next_animation() {
   finish = start;
 
   int i;
-  ball_reflection_type reflect_type = ball_reflection(&finish, &new_ball_dir_angle);
+  ball_reflection_type reflect_type = ball_reflection(&finish, &new_ball_dir_angle, false);
 
   int16_t rough_dist = abs(finish.origin.x - start.origin.x) +
                        abs(finish.origin.y - start.origin.y);
@@ -344,7 +448,7 @@ static void load_map_from_file() {
 
   s_block_layer_array = (Layer **)malloc(s_num_blocks*(sizeof(Layer *)));
 
-  GRect block_rect = (GRect) { .origin = {0, 0}, .size = {10, 5}};
+  GRect block_rect = (GRect) { .origin = {0, 0}, .size = {16, 8}};
 
   // create blocks
   int16_t i;
@@ -378,13 +482,19 @@ static void window_load(Window *window) {
   text_layer_set_text_alignment(s_text_layer, GTextAlignmentCenter);
   layer_add_child(s_main_layer, text_layer_get_layer(s_text_layer));
 
-  s_ball_layer = layer_create((GRect) { .origin = {10, 20}, .size = {5, 5} });
+  s_ball_layer = layer_create((GRect) { .origin = {113, 155}, .size = {5, 5} });
   layer_set_update_proc(s_ball_layer, ball_layer_draw);
   layer_add_child(s_main_layer, s_ball_layer);
 
   s_paddle_layer = layer_create((GRect) { .origin = {100, 160}, .size = {30, 5} });
   layer_set_update_proc(s_paddle_layer, paddle_layer_draw);
   layer_add_child(s_main_layer, s_paddle_layer);
+
+  s_aim_layer = layer_create_with_data((GRect) { .origin = {100, 143}, .size = {30, 15} }, 2);
+  int16_t *aim_angle = layer_get_data(s_aim_layer);
+  *aim_angle = -TRIG_MAX_ANGLE/4;
+  layer_set_update_proc(s_aim_layer, aim_layer_draw);
+  layer_add_child(s_main_layer, s_aim_layer);
 
   load_map_from_file();
 }
@@ -405,7 +515,8 @@ static void init(void) {
 
   s_ball_dir_angle = TRIG_MAX_ANGLE/8;
 
-  next_animation();
+  s_power_up = HOLD;
+  s_is_holding_ball = true;
 }
 
 static void deinit(void) {
