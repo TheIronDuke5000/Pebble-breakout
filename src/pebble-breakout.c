@@ -314,7 +314,10 @@ static ball_reflection_type ball_reflection(GRect *ball_rect, int16_t *new_ball_
 
 
   for (i = 0; i < 200; i++) {
-    if (ball_dir_abs_x > ball_dir_abs_y) {
+    if (i == 0) {
+      next_rect.origin.x += ball_dir.x / ball_dir_abs_x;
+      next_rect.origin.y += ball_dir.y / ball_dir_abs_y;
+    } else if (ball_dir_abs_x > ball_dir_abs_y) {
       next_rect.origin.x += ball_dir.x / ball_dir_abs_x;
       next_rect.origin.y += (i*ball_dir.y / ball_dir_abs_x) - ((i-1)*ball_dir.y / ball_dir_abs_x);
     } else {
@@ -400,8 +403,8 @@ static ball_reflection_type ball_reflection(GRect *ball_rect, int16_t *new_ball_
       }
     }
 
-
     *ball_rect = next_rect;
+    hit = false;
   }
   return NO_REFLECT;
 }
