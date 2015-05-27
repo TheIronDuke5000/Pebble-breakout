@@ -69,6 +69,8 @@
 
 #include <pebble.h>
 
+#define MAX_NUM_POWERUP_DROPS 10 // maximum number of currently dropping powerups
+
 static Window *s_menu_window;
 static SimpleMenuLayer *s_menu_layer;
 static SimpleMenuSection s_menu_section;
@@ -85,13 +87,22 @@ static const int16_t S_PADDLE_MAX_SPEED = 8;
 static const int16_t S_HOLD_AIM_INC = TRIG_MAX_ANGLE/0x30;
 static const int16_t S_BALL_TIME_PER_DIST = 12;
 static Layer **s_block_layer_array;
-static uint16_t s_num_blocks;
+static uint16_t s_num_blocks = 0;
 static Layer *s_aim_layer;
 static bool is_resume;
+static Layer *s_powerup_layer_array[MAX_NUM_POWERUP_DROPS];
+static uint8_t s_num_powerup_drops = 0;
+static PropertyAnimation *powerup_animation_array[MAX_NUM_POWERUP_DROPS];
+
+#define s_powerup_frame  (GRect) { .origin = {-7, 0}, .size = {30, 20} }
+
+#define s_powerup_text_frame (GRect) { .origin = {0, 0}, .size = {30, 16} }
+
+#define s_powerup_pill_frame (GRect) { .origin = {12, 17}, .size = {6, 3} }
 
 #define P_PADDLE_KEY 0        // int for x value of origin of paddle layer
 #define P_BALL_DATA_KEY 1     // array of 3 int16_t, [x, y, angle]    2 bytes per int16_t * 3 = 6 bytes 
-#define P_POWERUP_KEY 2       // power_up_type saved as an int
+#define P_POWERUP_KEY 2       // powerup_type saved as an int
 #define P_BLOCKS_DATA_KEY 4   // array of bytes with the same format as the file (HH XX YY) HH is the nubmer of hits remaining
 
 typedef enum {
@@ -107,14 +118,25 @@ typedef enum {
 } ball_reflection_type;
 
 typedef enum {
-  NONE = 0,
-  FIRST_BALL_HOLD = 1,
-  HOLD = 2,
-  LASER = 3,
-  WIDE_PADDLE = 4
-} power_up_type;
+  HOLD = 0,
+  LASER = 1,
+  WIDE = 2,
+  FIRST_BALL_HOLD = 3,
+  NONE = 4
+} powerup_type;
 
-static power_up_type s_power_up;
+static const char *powerup_names[] =
+  {"HOLD", "LASER", "WIDE", "FIRST_BALL_HOLD", "NONE"};
+
+#ifdef PBL_PLATFORM_BASALT
+  static const uint8_t powerup_colors_ARGB8[] = {GColorBlueARGB8, GColorRedARGB8, GColorGreenARGB8, GColorBlackARGB8, GColorBlackARGB8};
+  #define powerup_colors(i)  (GColor8) { .argb = powerup_colors_ARGB8[i]}
+#endif
+
+#define NUM_ENUM_POWERUPS 3    // number of powerups that can drop from block kills
+#define POWERUP_FREQ 1    // a power up will randomly appear a chance of 1/POWERUP_FREQ
+
+static powerup_type s_powerup;
 static bool s_is_holding_ball;
 
 static int16_t max(int16_t a, int16_t b) {
@@ -157,18 +179,25 @@ static void free_block_array() {
   s_num_blocks = 0;
 }
 
+static void free_powerup_array() {
+  for (int i = 0; i < s_num_powerup_drops; i++) {
+    layer_destroy(s_powerup_layer_array[i]);
+  }
+  s_num_powerup_drops = 0;
+}
+
 static void ball_animation();
 
 static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
   text_layer_set_text(s_text_layer, "Select");
 
-  if ((s_power_up == HOLD || s_power_up == FIRST_BALL_HOLD) && s_is_holding_ball) {
+  if ((s_powerup == HOLD || s_powerup == FIRST_BALL_HOLD) && s_is_holding_ball) {
     layer_set_hidden(s_aim_layer, true);
     int16_t *aim_angle = layer_get_data(s_aim_layer);
     s_ball_dir_angle = *aim_angle;
     s_is_holding_ball = false;
     ball_animation();
-  } else if (s_power_up == LASER) {
+  } else if (s_powerup == LASER) {
     // TODO: shoot laser
   }
 }
@@ -229,7 +258,7 @@ static void move_aim(ClickRecognizerRef recognizer) {
 
 static void btn_rep_handler(ClickRecognizerRef recognizer, void *context) {
   text_layer_set_text(s_text_layer, "Up Press");
-  if ((s_power_up == HOLD || s_power_up == FIRST_BALL_HOLD) && s_is_holding_ball) {
+  if ((s_powerup == HOLD || s_powerup == FIRST_BALL_HOLD) && s_is_holding_ball) {
     move_aim(recognizer);
   } else {
     move_paddle(recognizer);
@@ -301,7 +330,88 @@ static void paddle_layer_draw(Layer *layer, GContext *ctx) {
   graphics_fill_rect(ctx, bounds, bounds.size.h/2, GCornersAll);
 }
 
-static ball_reflection_type ball_reflection(GRect *ball_rect, int16_t *new_ball_dir_angle, bool hit) {
+static void powerup_layer_draw(Layer *layer, GContext *ctx) {
+  GRect bounds = layer_get_bounds(layer);
+
+  uint8_t *layer_data = layer_get_data(layer);
+
+  #ifdef PBL_PLATFORM_BASALT
+    GColor8 powerup_color = powerup_colors(*layer_data);
+  #else
+    GColor powerup_color = GColorBlack;
+  #endif
+
+  graphics_context_set_fill_color(ctx, powerup_color);
+  graphics_context_set_text_color(ctx, powerup_color);
+
+  graphics_draw_text(ctx, powerup_names[*layer_data], fonts_get_system_font(FONT_KEY_GOTHIC_14),
+    s_powerup_text_frame, GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
+
+  graphics_fill_rect(ctx, s_powerup_pill_frame, s_powerup_pill_frame.size.h/2, GCornersAll);
+}
+
+static void powerup_anim_stopped_handler(Animation *animation, bool finished, void *context) {
+  #ifdef PBL_PLATFORM_APLITE
+    // Free the animation
+    property_animation_destroy((PropertyAnimation *)animation);
+  #endif
+
+
+}
+
+static void drop_powerup(powerup_type powerup, Layer *block_layer) {
+  // text_layer_set_text(s_text_layer, "drop powerup");
+  GRect frame = layer_get_frame(block_layer);
+
+  frame.origin.x += s_powerup_frame.origin.x;
+  frame.origin.y += s_powerup_frame.origin.y;
+  frame.size = s_powerup_frame.size;
+
+  Layer *powerup_layer = layer_create_with_data(frame, 1); // TODO: this line causes issues on phone but not emulator, out of mem??
+  uint8_t *layer_data = layer_get_data(powerup_layer);
+  *layer_data = (uint8_t)powerup;
+  s_powerup_layer_array[s_num_powerup_drops] = powerup_layer;
+  layer_set_update_proc(powerup_layer, powerup_layer_draw);
+  layer_add_child(s_main_layer, powerup_layer);
+
+
+  // Schedule the next animation
+  GRect finish = frame;
+  finish.origin.y = 160;
+  PropertyAnimation *powerup_animation = property_animation_create_layer_frame(powerup_layer, &frame, &finish);
+  powerup_animation_array[s_num_powerup_drops] = powerup_animation;
+  animation_set_duration((Animation*)powerup_animation, 3000);
+  animation_set_delay((Animation*)powerup_animation, 0);
+  animation_set_curve((Animation*)powerup_animation, AnimationCurveLinear);
+  animation_set_handlers((Animation*)powerup_animation, (AnimationHandlers) {
+    .stopped = powerup_anim_stopped_handler
+  }, NULL);
+  animation_schedule((Animation*)powerup_animation);
+
+  s_num_powerup_drops++;
+}
+
+static void hit_block(Layer *block_layer) {
+  uint8_t *block_data = layer_get_data(block_layer);
+  if (*block_data == 0xff) {
+    // solid block
+  } else if (*block_data == 0) {
+    // destroyed block
+  } else {
+    (*block_data)--;
+    layer_mark_dirty(block_layer);
+
+    // TODO: check if level is finished
+
+    uint16_t random_number = rand() % (NUM_ENUM_POWERUPS*POWERUP_FREQ);
+    if (random_number < NUM_ENUM_POWERUPS && s_num_powerup_drops < MAX_NUM_POWERUP_DROPS) {
+      powerup_type powerup = (powerup_type)random_number;
+      drop_powerup(powerup, block_layer);
+    }
+  }
+}
+
+static ball_reflection_type ball_reflection(GRect *ball_rect, int16_t *new_ball_dir_angle, bool *hit) {
   int i;
   GPoint ball_dir = get_ball_dir_point();
   int16_t ball_dir_abs_x = abs(ball_dir.x);
@@ -331,12 +441,12 @@ static ball_reflection_type ball_reflection(GRect *ball_rect, int16_t *new_ball_
 
     if (next_rect.origin.x < 0 ||
         next_rect.origin.x + next_rect.size.w > arena_bounds.size.w) {
-      if (hit) {
+      if (*hit) {
         *new_ball_dir_angle = reflect_angle_Y(*new_ball_dir_angle);
       }
       return WALL_VERT;
     } else if (next_rect.origin.y < 0) {
-      if (hit) {
+      if (*hit) {
         *new_ball_dir_angle = reflect_angle_X(*new_ball_dir_angle);
       }
       return WALL_HORZ;
@@ -355,7 +465,7 @@ static ball_reflection_type ball_reflection(GRect *ball_rect, int16_t *new_ball_
                  ball_rect->origin.x + ball_rect->size.w > paddle_frame.origin.x)) {
       // hit the actual paddle
       // *ball_rect = next_rect;
-      if (hit) {
+      if (*hit) {
         *new_ball_dir_angle = reflect_angle_X(*new_ball_dir_angle);
         int16_t dist_from_centre = (next_rect.origin.x + next_rect.size.w/2) -
                                    (paddle_frame.origin.x + paddle_frame.size.w/2);
@@ -382,20 +492,18 @@ static ball_reflection_type ball_reflection(GRect *ball_rect, int16_t *new_ball_
                next_rect.origin.y + next_rect.size.h -1 == block_frame.origin.y) &&
               next_rect.origin.x < block_frame.origin.x + block_frame.size.w &&
               next_rect.origin.x + next_rect.size.w > block_frame.origin.x) {
-            if (hit) {
+            if (*hit) {
               *new_ball_dir_angle = reflect_angle_X(*new_ball_dir_angle);
-              (*block_data)--;
-              layer_mark_dirty(s_block_layer_array[j]);
+              hit_block(s_block_layer_array[j]);
             }
             return BLOCK_HORZ;
           } else if (next_rect.origin.y < block_frame.origin.y + block_frame.size.h &&
                      next_rect.origin.y + next_rect.size.h > block_frame.origin.y &&
                      (next_rect.origin.x +1 == block_frame.origin.x + block_frame.size.w ||
                      next_rect.origin.x + next_rect.size.w -1 == block_frame.origin.x)) {
-            if (hit) {
+            if (*hit) {
               *new_ball_dir_angle = reflect_angle_Y(*new_ball_dir_angle);
-              (*block_data)--;
-              layer_mark_dirty(s_block_layer_array[j]);
+              hit_block(s_block_layer_array[j]);
             }
             return BLOCK_VERT;
           }
@@ -404,12 +512,12 @@ static ball_reflection_type ball_reflection(GRect *ball_rect, int16_t *new_ball_
     }
 
     *ball_rect = next_rect;
-    hit = false;
+    *hit = false;
   }
   return NO_REFLECT;
 }
 
-static void anim_stopped_handler(Animation *animation, bool finished, void *context) {
+static void ball_anim_stopped_handler(Animation *animation, bool finished, void *context) {
   #ifdef PBL_PLATFORM_APLITE
     // Free the animation
     property_animation_destroy(s_ball_animation);
@@ -418,12 +526,13 @@ static void anim_stopped_handler(Animation *animation, bool finished, void *cont
   // Schedule the next one, unless the app is exiting
   if (finished) {
     int16_t new_ball_dir_angle;
-    GRect ball_rect = layer_get_frame(s_ball_layer);
-    ball_reflection_type reflect_type = ball_reflection(&ball_rect, &new_ball_dir_angle, true);
+    GRect ball_rect_changing = layer_get_frame(s_ball_layer);
+    bool hit = true;
+    ball_reflection_type reflect_type = ball_reflection(&ball_rect_changing, &new_ball_dir_angle, &hit);
     if (reflect_type == DEATH) {
       text_layer_set_text(s_text_layer, "DEATH");
       window_stack_pop(true);
-    } else if (reflect_type == PADDLE_HIT && s_power_up == HOLD) {
+    } else if (reflect_type == PADDLE_HIT && s_powerup == HOLD) {
       GRect aim_rect = layer_get_frame(s_aim_layer);
       GRect ball_rect = layer_get_frame(s_ball_layer);
       aim_rect.origin.x = ball_rect.origin.x - 13;
@@ -431,7 +540,9 @@ static void anim_stopped_handler(Animation *animation, bool finished, void *cont
       layer_set_hidden(s_aim_layer, false);
       s_is_holding_ball = true;
     } else {
-      s_ball_dir_angle = new_ball_dir_angle;
+      if (hit) {
+        s_ball_dir_angle = new_ball_dir_angle;
+      }
       ball_animation();
     }
   }
@@ -446,7 +557,8 @@ static void ball_animation() {
   finish = start;
 
   int i;
-  ball_reflection_type reflect_type = ball_reflection(&finish, &new_ball_dir_angle, false);
+  bool hit = false;
+  ball_reflection_type reflect_type = ball_reflection(&finish, &new_ball_dir_angle, &hit);
 
   int16_t rough_dist = abs(finish.origin.x - start.origin.x) +
                        abs(finish.origin.y - start.origin.y);
@@ -457,7 +569,7 @@ static void ball_animation() {
   animation_set_delay((Animation*)s_ball_animation, 0);
   animation_set_curve((Animation*)s_ball_animation, AnimationCurveLinear);
   animation_set_handlers((Animation*)s_ball_animation, (AnimationHandlers) {
-    .stopped = anim_stopped_handler
+    .stopped = ball_anim_stopped_handler
   }, NULL);
   animation_schedule((Animation*)s_ball_animation);
 
@@ -498,8 +610,7 @@ static void load_map_from_resource() {
   free(buffer);
 }
 
-// returns 0 for success, 1 for complete fail, 2 for partial fail
-static uint8_t load_resume_data_from_persist() {
+static bool load_resume_data_from_persist() {
   if (persist_exists(P_BLOCKS_DATA_KEY)) {
     free_block_array();
 
@@ -529,7 +640,7 @@ static uint8_t load_resume_data_from_persist() {
     }
 
     if (persist_exists(P_POWERUP_KEY)) {
-      s_power_up = (power_up_type) persist_read_int(P_POWERUP_KEY);
+      s_powerup = (powerup_type) persist_read_int(P_POWERUP_KEY);
     }
 
     return true;
@@ -541,10 +652,10 @@ static uint8_t load_resume_data_from_persist() {
 static void persist_resume_data() {
   if (s_num_blocks > 0) {
     uint8_t res_size = s_num_blocks*3;
-    char *buffer = (char *)malloc(res_size);
+    uint8_t buffer[256];
 
     for (int i = 0; i < s_num_blocks; i++) {
-      uint8_t *layer_data = layer_get_data(s_block_layer_array[i]);
+      uint8_t *layer_data = (uint8_t *)layer_get_data(s_block_layer_array[i]);
       GRect frame = layer_get_frame(s_block_layer_array[i]);
       buffer[i*3] = *layer_data;
       buffer[i*3+1] = frame.origin.x;
@@ -552,7 +663,6 @@ static void persist_resume_data() {
     }
 
     persist_write_data(P_BLOCKS_DATA_KEY, buffer, res_size);
-    free(buffer);
 
     int16_t ball_buff[3];
     GRect ball_frame = layer_get_frame(s_ball_layer);
@@ -564,7 +674,7 @@ static void persist_resume_data() {
     GRect paddle_frame = layer_get_frame(s_paddle_layer);
     persist_write_int(P_PADDLE_KEY, (int)paddle_frame.origin.x);
 
-    persist_write_int(P_POWERUP_KEY, (int)s_power_up);
+    persist_write_int(P_POWERUP_KEY, (int)s_powerup);
   }
 }
 
@@ -580,7 +690,7 @@ static void game_window_load(Window *window) {
   layer_add_child(window_layer, s_main_layer);
 
   s_text_layer = text_layer_create((GRect) {
-    .origin = { 0, 72 },
+    .origin = { 0, 10 },
     .size = { bounds.size.w, 20 }
   });
   text_layer_set_text(s_text_layer, "Press a button");
@@ -620,8 +730,22 @@ static void game_window_load(Window *window) {
     load_map_from_resource();
 
     s_ball_dir_angle = TRIG_MAX_ANGLE/8;
-    s_power_up = FIRST_BALL_HOLD;
+    s_powerup = FIRST_BALL_HOLD;
     s_is_holding_ball = true;
+  }
+
+
+  char buffer[8];
+  clock_copy_time_string(buffer, 8);
+  // APP_LOG(APP_LOG_LEVEL_DEBUG, buffer);
+  for (int i = 0; i < 8; i++) {
+    if (buffer[i] == ':') {
+      srand(buffer[i+2]);
+      // text_layer_set_text(s_text_layer, "buffer");
+      // APP_LOG(APP_LOG_LEVEL_DEBUG, "minute ones: %d", buffer[i+2]);
+      // text_layer_set_text(s_text_layer, buffer);
+      break;
+    }
   }
 }
 
@@ -638,15 +762,16 @@ static void game_window_unload(Window *window) {
   layer_destroy(s_aim_layer);
 
   free_block_array();
+  free_powerup_array();
   layer_destroy(s_main_layer);
 }
 
-void menu_new_game_callback(int index, void *context) {
+static void menu_new_game_callback(int index, void *context) {
   is_resume = false;
   window_stack_push(s_main_window, true);
 }
 
-void menu_resume_callback(int index, void *context) {
+static void menu_resume_callback(int index, void *context) {
   if (persist_exists(P_BLOCKS_DATA_KEY)) {
     is_resume = true;
     window_stack_push(s_main_window, true);
