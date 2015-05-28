@@ -94,16 +94,19 @@ static Layer *s_powerup_layer_array[MAX_NUM_POWERUP_DROPS];
 static uint8_t s_num_powerup_drops = 0;
 static PropertyAnimation *powerup_animation_array[MAX_NUM_POWERUP_DROPS];
 
-#define s_powerup_frame  (GRect) { .origin = {-7, 0}, .size = {30, 20} }
+#define s_powerup_frame  (GRect) { .origin = {-7, 0}, .size = {32, 20} }
 
-#define s_powerup_text_frame (GRect) { .origin = {0, 0}, .size = {30, 16} }
+#define s_powerup_text_frame (GRect) { .origin = {0, 0}, .size = {32, 16} }
 
-#define s_powerup_pill_frame (GRect) { .origin = {12, 17}, .size = {6, 3} }
+#define s_powerup_pill_frame (GRect) { .origin = {13, 17}, .size = {6, 3} }
 
 #define P_PADDLE_KEY 0        // int for x value of origin of paddle layer
 #define P_BALL_DATA_KEY 1     // array of 3 int16_t, [x, y, angle]    2 bytes per int16_t * 3 = 6 bytes 
-#define P_POWERUP_KEY 2       // powerup_type saved as an int
+#define P_POWERUP_KEY 2       // PowerupTypeEnum saved as an int
 #define P_BLOCKS_DATA_KEY 4   // array of bytes with the same format as the file (HH XX YY) HH is the nubmer of hits remaining
+
+#define PADDLE_WIDTH_STANDARD 30
+#define PADDLE_WIDTH_WIDE 60
 
 typedef enum {
   WALL_VERT,
@@ -115,7 +118,7 @@ typedef enum {
   BLOCK_VERT,
   BLOCK_HORZ,
   NO_REFLECT
-} ball_reflection_type;
+} BallReflectionTypeEnum;
 
 typedef enum {
   HOLD = 0,
@@ -123,20 +126,20 @@ typedef enum {
   WIDE = 2,
   FIRST_BALL_HOLD = 3,
   NONE = 4
-} powerup_type;
+} PowerupTypeEnum;
 
-static const char *powerup_names[] =
+static const char *s_powerup_names[] =
   {"HOLD", "LASER", "WIDE", "FIRST_BALL_HOLD", "NONE"};
 
 #ifdef PBL_PLATFORM_BASALT
-  static const uint8_t powerup_colors_ARGB8[] = {GColorBlueARGB8, GColorRedARGB8, GColorGreenARGB8, GColorBlackARGB8, GColorBlackARGB8};
-  #define powerup_colors(i)  (GColor8) { .argb = powerup_colors_ARGB8[i]}
+  static const uint8_t s_powerup_colors_ARGB8[] = {GColorBlueARGB8, GColorRedARGB8, GColorGreenARGB8, GColorBlackARGB8, GColorBlackARGB8};
+  #define s_powerup_colors(i)  (GColor8) { .argb = s_powerup_colors_ARGB8[i]}
 #endif
 
 #define NUM_ENUM_POWERUPS 3    // number of powerups that can drop from block kills
 #define POWERUP_FREQ 1    // a power up will randomly appear a chance of 1/POWERUP_FREQ
 
-static powerup_type s_powerup;
+static PowerupTypeEnum s_active_powerup;
 static bool s_is_holding_ball;
 
 static int16_t max(int16_t a, int16_t b) {
@@ -186,18 +189,36 @@ static void free_powerup_array() {
   s_num_powerup_drops = 0;
 }
 
+static bool powerup_layer_destroy(Layer *powerup_layer) {
+  bool found_layer = false;
+  for (int i = 0; i < s_num_powerup_drops; i++) {
+    if (found_layer) {
+      s_powerup_layer_array[i-1] = s_powerup_layer_array[i];
+    } else if (powerup_layer == s_powerup_layer_array[i]) {
+      found_layer = true;
+      layer_set_hidden(powerup_layer, true);
+      layer_destroy(powerup_layer);
+    }
+  }
+  if (found_layer) {
+    s_num_powerup_drops--;
+    s_powerup_layer_array[s_num_powerup_drops] = NULL;
+  }
+  return found_layer;
+}
+
 static void ball_animation();
 
 static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
   text_layer_set_text(s_text_layer, "Select");
 
-  if ((s_powerup == HOLD || s_powerup == FIRST_BALL_HOLD) && s_is_holding_ball) {
+  if ((s_active_powerup == HOLD || s_active_powerup == FIRST_BALL_HOLD) && s_is_holding_ball) {
     layer_set_hidden(s_aim_layer, true);
     int16_t *aim_angle = layer_get_data(s_aim_layer);
     s_ball_dir_angle = *aim_angle;
     s_is_holding_ball = false;
     ball_animation();
-  } else if (s_powerup == LASER) {
+  } else if (s_active_powerup == LASER) {
     // TODO: shoot laser
   }
 }
@@ -258,7 +279,7 @@ static void move_aim(ClickRecognizerRef recognizer) {
 
 static void btn_rep_handler(ClickRecognizerRef recognizer, void *context) {
   text_layer_set_text(s_text_layer, "Up Press");
-  if ((s_powerup == HOLD || s_powerup == FIRST_BALL_HOLD) && s_is_holding_ball) {
+  if ((s_active_powerup == HOLD || s_active_powerup == FIRST_BALL_HOLD) && s_is_holding_ball) {
     move_aim(recognizer);
   } else {
     move_paddle(recognizer);
@@ -321,7 +342,7 @@ static void paddle_layer_draw(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
 
   #ifdef PBL_PLATFORM_BASALT
-    GColor8 paddle_color = GColorDukeBlue;
+    GColor8 paddle_color = s_powerup_colors(s_active_powerup);
   #else
     GColor paddle_color = GColorBlack;
   #endif
@@ -336,7 +357,7 @@ static void powerup_layer_draw(Layer *layer, GContext *ctx) {
   uint8_t *layer_data = layer_get_data(layer);
 
   #ifdef PBL_PLATFORM_BASALT
-    GColor8 powerup_color = powerup_colors(*layer_data);
+    GColor8 powerup_color = s_powerup_colors(*layer_data);
   #else
     GColor powerup_color = GColorBlack;
   #endif
@@ -344,22 +365,44 @@ static void powerup_layer_draw(Layer *layer, GContext *ctx) {
   graphics_context_set_fill_color(ctx, powerup_color);
   graphics_context_set_text_color(ctx, powerup_color);
 
-  graphics_draw_text(ctx, powerup_names[*layer_data], fonts_get_system_font(FONT_KEY_GOTHIC_14),
+  graphics_draw_text(ctx, s_powerup_names[*layer_data], fonts_get_system_font(FONT_KEY_GOTHIC_14),
     s_powerup_text_frame, GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
 
   graphics_fill_rect(ctx, s_powerup_pill_frame, s_powerup_pill_frame.size.h/2, GCornersAll);
 }
 
 static void powerup_anim_stopped_handler(Animation *animation, bool finished, void *context) {
-  #ifdef PBL_PLATFORM_APLITE
-    // Free the animation
-    property_animation_destroy((PropertyAnimation *)animation);
-  #endif
+  property_animation_destroy((PropertyAnimation *)animation);
+  text_layer_set_text(s_text_layer, "powerup hit bottom");
 
+  if (context != NULL) {
+    Layer *powerup_layer = (Layer *)context;
+    uint8_t *powerup_data = layer_get_data(powerup_layer);
+    GRect powerup_frame = layer_get_frame(powerup_layer);
+    GRect paddle_frame = layer_get_frame(s_paddle_layer);
 
+    GRect pill_frame = s_powerup_pill_frame;
+    pill_frame.origin.x += powerup_frame.origin.x;
+    pill_frame.origin.y += powerup_frame.origin.y;
+
+    if (pill_frame.origin.x < paddle_frame.origin.x + paddle_frame.size.w &&
+        pill_frame.origin.x + pill_frame.size.w > paddle_frame.origin.x) {
+      text_layer_set_text(s_text_layer, "caught a powerup");
+      s_active_powerup = (PowerupTypeEnum)(*powerup_data);
+
+      paddle_frame.size.w = PADDLE_WIDTH_STANDARD;
+      if (s_active_powerup == WIDE) {
+        paddle_frame.size.w = PADDLE_WIDTH_WIDE;
+      }
+      layer_set_frame(s_paddle_layer, paddle_frame);
+      layer_mark_dirty(s_paddle_layer);
+    }
+
+    powerup_layer_destroy(powerup_layer);
+  }
 }
 
-static void drop_powerup(powerup_type powerup, Layer *block_layer) {
+static void drop_powerup(PowerupTypeEnum powerup, Layer *block_layer) {
   // text_layer_set_text(s_text_layer, "drop powerup");
   GRect frame = layer_get_frame(block_layer);
 
@@ -377,7 +420,8 @@ static void drop_powerup(powerup_type powerup, Layer *block_layer) {
 
   // Schedule the next animation
   GRect finish = frame;
-  finish.origin.y = 160;
+  GRect paddle_frame = layer_get_frame(s_paddle_layer);
+  finish.origin.y = paddle_frame.origin.y - frame.size.h;
   PropertyAnimation *powerup_animation = property_animation_create_layer_frame(powerup_layer, &frame, &finish);
   powerup_animation_array[s_num_powerup_drops] = powerup_animation;
   animation_set_duration((Animation*)powerup_animation, 3000);
@@ -385,7 +429,7 @@ static void drop_powerup(powerup_type powerup, Layer *block_layer) {
   animation_set_curve((Animation*)powerup_animation, AnimationCurveLinear);
   animation_set_handlers((Animation*)powerup_animation, (AnimationHandlers) {
     .stopped = powerup_anim_stopped_handler
-  }, NULL);
+  }, powerup_layer);
   animation_schedule((Animation*)powerup_animation);
 
   s_num_powerup_drops++;
@@ -405,13 +449,13 @@ static void hit_block(Layer *block_layer) {
 
     uint16_t random_number = rand() % (NUM_ENUM_POWERUPS*POWERUP_FREQ);
     if (random_number < NUM_ENUM_POWERUPS && s_num_powerup_drops < MAX_NUM_POWERUP_DROPS) {
-      powerup_type powerup = (powerup_type)random_number;
+      PowerupTypeEnum powerup = (PowerupTypeEnum)random_number;
       drop_powerup(powerup, block_layer);
     }
   }
 }
 
-static ball_reflection_type ball_reflection(GRect *ball_rect, int16_t *new_ball_dir_angle, bool *hit) {
+static BallReflectionTypeEnum ball_reflection(GRect *ball_rect, int16_t *new_ball_dir_angle, bool *hit) {
   int i;
   GPoint ball_dir = get_ball_dir_point();
   int16_t ball_dir_abs_x = abs(ball_dir.x);
@@ -518,21 +562,18 @@ static ball_reflection_type ball_reflection(GRect *ball_rect, int16_t *new_ball_
 }
 
 static void ball_anim_stopped_handler(Animation *animation, bool finished, void *context) {
-  #ifdef PBL_PLATFORM_APLITE
-    // Free the animation
-    property_animation_destroy(s_ball_animation);
-  #endif
+  property_animation_destroy(s_ball_animation);
 
   // Schedule the next one, unless the app is exiting
   if (finished) {
     int16_t new_ball_dir_angle;
     GRect ball_rect_changing = layer_get_frame(s_ball_layer);
     bool hit = true;
-    ball_reflection_type reflect_type = ball_reflection(&ball_rect_changing, &new_ball_dir_angle, &hit);
+    BallReflectionTypeEnum reflect_type = ball_reflection(&ball_rect_changing, &new_ball_dir_angle, &hit);
     if (reflect_type == DEATH) {
       text_layer_set_text(s_text_layer, "DEATH");
       window_stack_pop(true);
-    } else if (reflect_type == PADDLE_HIT && s_powerup == HOLD) {
+    } else if (reflect_type == PADDLE_HIT && s_active_powerup == HOLD) {
       GRect aim_rect = layer_get_frame(s_aim_layer);
       GRect ball_rect = layer_get_frame(s_ball_layer);
       aim_rect.origin.x = ball_rect.origin.x - 13;
@@ -558,7 +599,7 @@ static void ball_animation() {
 
   int i;
   bool hit = false;
-  ball_reflection_type reflect_type = ball_reflection(&finish, &new_ball_dir_angle, &hit);
+  BallReflectionTypeEnum reflect_type = ball_reflection(&finish, &new_ball_dir_angle, &hit);
 
   int16_t rough_dist = abs(finish.origin.x - start.origin.x) +
                        abs(finish.origin.y - start.origin.y);
@@ -640,7 +681,7 @@ static bool load_resume_data_from_persist() {
     }
 
     if (persist_exists(P_POWERUP_KEY)) {
-      s_powerup = (powerup_type) persist_read_int(P_POWERUP_KEY);
+      s_active_powerup = (PowerupTypeEnum) persist_read_int(P_POWERUP_KEY);
     }
 
     return true;
@@ -674,7 +715,7 @@ static void persist_resume_data() {
     GRect paddle_frame = layer_get_frame(s_paddle_layer);
     persist_write_int(P_PADDLE_KEY, (int)paddle_frame.origin.x);
 
-    persist_write_int(P_POWERUP_KEY, (int)s_powerup);
+    persist_write_int(P_POWERUP_KEY, (int)s_active_powerup);
   }
 }
 
@@ -708,14 +749,14 @@ static void game_window_load(Window *window) {
 
   s_paddle_layer = layer_create((GRect) {
     .origin = {100, paddle_origin_y},
-    .size = {30, 5}
+    .size = {PADDLE_WIDTH_STANDARD, 5}
   });
   layer_set_update_proc(s_paddle_layer, paddle_layer_draw);
   layer_add_child(s_main_layer, s_paddle_layer);
 
   s_aim_layer = layer_create_with_data((GRect) {
     .origin = {100, paddle_origin_y-17},
-    .size = {30, 15}
+    .size = {PADDLE_WIDTH_STANDARD, 15}
   }, 2);
   int16_t *aim_angle = layer_get_data(s_aim_layer);
   *aim_angle = -TRIG_MAX_ANGLE/4;
@@ -730,7 +771,7 @@ static void game_window_load(Window *window) {
     load_map_from_resource();
 
     s_ball_dir_angle = TRIG_MAX_ANGLE/8;
-    s_powerup = FIRST_BALL_HOLD;
+    s_active_powerup = FIRST_BALL_HOLD;
     s_is_holding_ball = true;
   }
 
