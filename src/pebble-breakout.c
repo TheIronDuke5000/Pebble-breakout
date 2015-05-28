@@ -207,7 +207,18 @@ static bool powerup_layer_destroy(Layer *powerup_layer) {
   return found_layer;
 }
 
-static void ball_animation();
+static void set_active_powerup(PowerupTypeEnum powerup_type) {
+  s_active_powerup = powerup_type;
+  GRect paddle_frame = layer_get_frame(s_paddle_layer);
+  paddle_frame.size.w = PADDLE_WIDTH_STANDARD;
+  if (s_active_powerup == WIDE) {
+    paddle_frame.size.w = PADDLE_WIDTH_WIDE;
+  }
+  layer_set_frame(s_paddle_layer, paddle_frame);
+  layer_mark_dirty(s_paddle_layer);
+}
+
+static void ball_animation(uint16_t delay);
 
 static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
   text_layer_set_text(s_text_layer, "Select");
@@ -217,7 +228,7 @@ static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
     int16_t *aim_angle = layer_get_data(s_aim_layer);
     s_ball_dir_angle = *aim_angle;
     s_is_holding_ball = false;
-    ball_animation();
+    ball_animation(0);
   } else if (s_active_powerup == LASER) {
     // TODO: shoot laser
   }
@@ -388,14 +399,7 @@ static void powerup_anim_stopped_handler(Animation *animation, bool finished, vo
     if (pill_frame.origin.x < paddle_frame.origin.x + paddle_frame.size.w &&
         pill_frame.origin.x + pill_frame.size.w > paddle_frame.origin.x) {
       text_layer_set_text(s_text_layer, "caught a powerup");
-      s_active_powerup = (PowerupTypeEnum)(*powerup_data);
-
-      paddle_frame.size.w = PADDLE_WIDTH_STANDARD;
-      if (s_active_powerup == WIDE) {
-        paddle_frame.size.w = PADDLE_WIDTH_WIDE;
-      }
-      layer_set_frame(s_paddle_layer, paddle_frame);
-      layer_mark_dirty(s_paddle_layer);
+      set_active_powerup((PowerupTypeEnum)(*powerup_data));
     }
 
     powerup_layer_destroy(powerup_layer);
@@ -584,12 +588,12 @@ static void ball_anim_stopped_handler(Animation *animation, bool finished, void 
       if (hit) {
         s_ball_dir_angle = new_ball_dir_angle;
       }
-      ball_animation();
+      ball_animation(0);
     }
   }
 }
 
-static void ball_animation() {
+static void ball_animation(uint16_t delay) {
   // Determine start and finish positions
   GRect start, finish;
   int16_t new_ball_dir_angle;
@@ -607,7 +611,7 @@ static void ball_animation() {
   // Schedule the next animation
   s_ball_animation = property_animation_create_layer_frame(s_ball_layer, &start, &finish);
   animation_set_duration((Animation*)s_ball_animation, S_BALL_TIME_PER_DIST*rough_dist);
-  animation_set_delay((Animation*)s_ball_animation, 0);
+  animation_set_delay((Animation*)s_ball_animation, delay);
   animation_set_curve((Animation*)s_ball_animation, AnimationCurveLinear);
   animation_set_handlers((Animation*)s_ball_animation, (AnimationHandlers) {
     .stopped = ball_anim_stopped_handler
@@ -681,7 +685,7 @@ static bool load_resume_data_from_persist() {
     }
 
     if (persist_exists(P_POWERUP_KEY)) {
-      s_active_powerup = (PowerupTypeEnum) persist_read_int(P_POWERUP_KEY);
+      set_active_powerup((PowerupTypeEnum) persist_read_int(P_POWERUP_KEY));
     }
 
     return true;
@@ -766,12 +770,12 @@ static void game_window_load(Window *window) {
   if (is_resume && load_resume_data_from_persist()) {
     s_is_holding_ball = false;
     layer_set_hidden(s_aim_layer, true);
-    ball_animation();
+    ball_animation(1000);
   } else {
     load_map_from_resource();
 
     s_ball_dir_angle = TRIG_MAX_ANGLE/8;
-    s_active_powerup = FIRST_BALL_HOLD;
+    set_active_powerup(FIRST_BALL_HOLD);
     s_is_holding_ball = true;
   }
 
