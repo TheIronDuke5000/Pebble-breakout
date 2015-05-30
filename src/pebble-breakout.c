@@ -73,6 +73,7 @@
 
 static Window *s_menu_window;
 static SimpleMenuLayer *s_menu_layer;
+static Layer *s_status_layer;
 static SimpleMenuSection s_menu_section;
 static SimpleMenuItem s_menu_items[2];
 static Window *s_main_window;
@@ -93,6 +94,16 @@ static bool is_resume;
 static Layer *s_powerup_layer_array[MAX_NUM_POWERUP_DROPS];
 static uint8_t s_num_powerup_drops = 0;
 static PropertyAnimation *powerup_animation_array[MAX_NUM_POWERUP_DROPS];
+static uint8_t s_num_lives;
+static uint8_t s_level;
+static uint32_t s_score;
+static uint8_t s_num_lives_old;
+static uint8_t s_level_old;
+static uint32_t s_score_old;
+
+#define STATUS_LAYER_HEIGHT 16
+#define SCORE_MAX_WIDTH 5
+#define SCORE_BLOCK_KILL 10
 
 #define s_powerup_frame  (GRect) { .origin = {-7, 0}, .size = {32, 20} }
 
@@ -104,6 +115,9 @@ static PropertyAnimation *powerup_animation_array[MAX_NUM_POWERUP_DROPS];
 #define P_BALL_DATA_KEY 1     // array of 3 int16_t, [x, y, angle]    2 bytes per int16_t * 3 = 6 bytes 
 #define P_POWERUP_KEY 2       // PowerupTypeEnum saved as an int
 #define P_BLOCKS_DATA_KEY 4   // array of bytes with the same format as the file (HH XX YY) HH is the nubmer of hits remaining
+#define P_LIVES_KEY 5
+#define P_LEVEL_KEY 6
+#define P_SCORE_KEY 7
 
 #define PADDLE_WIDTH_STANDARD 30
 #define PADDLE_WIDTH_WIDE 60
@@ -382,6 +396,50 @@ static void powerup_layer_draw(Layer *layer, GContext *ctx) {
   graphics_fill_rect(ctx, s_powerup_pill_frame, s_powerup_pill_frame.size.h/2, GCornersAll);
 }
 
+static void status_layer_draw(Layer *layer, GContext *ctx) {
+  if (s_score == s_score_old && s_num_lives == s_num_lives_old && s_level == s_level_old) {
+    // dont redraw the status bar
+    return;
+  }
+
+  s_score_old = s_score;
+  s_num_lives_old = s_num_lives;
+  s_level_old = s_level;
+
+  GRect bounds = layer_get_bounds(layer);
+  GRect text_bounds = bounds;
+  text_bounds.origin.x += 1;
+  text_bounds.origin.y += 4;
+  text_bounds.size.w -= 2;
+  text_bounds.size.h = 8;
+
+  graphics_context_set_fill_color(ctx, GColorBlack);
+  graphics_context_set_text_color(ctx, GColorWhite);
+
+  graphics_fill_rect(ctx, bounds, 0, GCornersAll);
+
+  uint8_t buffer_len = 15;
+  char buffer[buffer_len];
+  snprintf(buffer, buffer_len, "yx%d", s_num_lives);
+  buffer[0] = '"';
+  graphics_draw_text(ctx, buffer, fonts_load_custom_font(resource_get_handle(RESOURCE_ID_ARCADE_FONT_8)),
+    text_bounds, GTextOverflowModeWordWrap, GTextAlignmentLeft, NULL);
+
+  snprintf(buffer, buffer_len, "LVL%d", s_level);
+  graphics_draw_text(ctx, buffer, fonts_load_custom_font(resource_get_handle(RESOURCE_ID_ARCADE_FONT_8)),
+    text_bounds, GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
+
+  char *buff_start = buffer + SCORE_MAX_WIDTH;
+  uint8_t num_chars = snprintf(buff_start, buffer_len - SCORE_MAX_WIDTH, "%lu", (uint32_t)s_score);
+  while (num_chars < SCORE_MAX_WIDTH) {
+    buff_start--;
+    buff_start[0] = '0';
+    num_chars++;
+  }
+  graphics_draw_text(ctx, buff_start, fonts_load_custom_font(resource_get_handle(RESOURCE_ID_ARCADE_FONT_8)),
+    text_bounds, GTextOverflowModeWordWrap, GTextAlignmentRight, NULL);
+}
+
 static void powerup_anim_stopped_handler(Animation *animation, bool finished, void *context) {
   property_animation_destroy((PropertyAnimation *)animation);
   text_layer_set_text(s_text_layer, "powerup hit bottom");
@@ -448,6 +506,11 @@ static void hit_block(Layer *block_layer) {
   } else {
     (*block_data)--;
     layer_mark_dirty(block_layer);
+
+    if (*block_data == 0) {
+      s_score += SCORE_BLOCK_KILL;
+      // layer_mark_dirty(s_status_layer);
+    }
 
     // TODO: check if level is finished
 
@@ -688,6 +751,20 @@ static bool load_resume_data_from_persist() {
       set_active_powerup((PowerupTypeEnum) persist_read_int(P_POWERUP_KEY));
     }
 
+    if (persist_exists(P_LEVEL_KEY)) {
+      s_level = persist_read_int(P_LEVEL_KEY);
+    }
+
+    if (persist_exists(P_LIVES_KEY)) {
+      s_num_lives = persist_read_int(P_LIVES_KEY);
+    }
+
+    if (persist_exists(P_SCORE_KEY)) {
+      s_score = persist_read_int(P_SCORE_KEY);
+    }
+
+    layer_mark_dirty(s_status_layer);
+
     return true;
   } else {
     return false;
@@ -717,9 +794,13 @@ static void persist_resume_data() {
     persist_write_data(P_BALL_DATA_KEY, ball_buff, 6);
 
     GRect paddle_frame = layer_get_frame(s_paddle_layer);
-    persist_write_int(P_PADDLE_KEY, (int)paddle_frame.origin.x);
+    persist_write_int(P_PADDLE_KEY, paddle_frame.origin.x);
 
-    persist_write_int(P_POWERUP_KEY, (int)s_active_powerup);
+    persist_write_int(P_POWERUP_KEY, s_active_powerup);
+
+    persist_write_int(P_LEVEL_KEY, s_level);
+    persist_write_int(P_LIVES_KEY, s_num_lives);
+    persist_write_int(P_SCORE_KEY, s_score);
   }
 }
 
@@ -729,10 +810,18 @@ static void game_window_load(Window *window) {
   GRect bounds = layer_get_bounds(window_layer);
 
   s_main_layer = layer_create((GRect) {
-    .origin = {0, 0},
-    .size = bounds.size
+    .origin = {0, STATUS_LAYER_HEIGHT},
+    .size = {bounds.size.w, bounds.size.h - STATUS_LAYER_HEIGHT}
   });
   layer_add_child(window_layer, s_main_layer);
+
+  s_status_layer = layer_create((GRect) {
+    .origin = {0, 0},
+    .size = {bounds.size.w, STATUS_LAYER_HEIGHT}
+  });
+  layer_set_update_proc(s_status_layer, status_layer_draw);
+  layer_add_child(window_layer, s_status_layer);
+
 
   s_text_layer = text_layer_create((GRect) {
     .origin = { 0, 10 },
@@ -742,7 +831,7 @@ static void game_window_load(Window *window) {
   text_layer_set_text_alignment(s_text_layer, GTextAlignmentCenter);
   layer_add_child(s_main_layer, text_layer_get_layer(s_text_layer));
 
-  int16_t paddle_origin_y = 160;
+  int16_t paddle_origin_y = 144;
 
   s_ball_layer = layer_create((GRect) {
     .origin = {113, paddle_origin_y-5},
@@ -777,18 +866,18 @@ static void game_window_load(Window *window) {
     s_ball_dir_angle = TRIG_MAX_ANGLE/8;
     set_active_powerup(FIRST_BALL_HOLD);
     s_is_holding_ball = true;
+
+    s_level = 1;
+    s_num_lives = 3;
+    s_score = 0;
   }
 
 
   char buffer[8];
   clock_copy_time_string(buffer, 8);
-  // APP_LOG(APP_LOG_LEVEL_DEBUG, buffer);
   for (int i = 0; i < 8; i++) {
     if (buffer[i] == ':') {
       srand(buffer[i+2]);
-      // text_layer_set_text(s_text_layer, "buffer");
-      // APP_LOG(APP_LOG_LEVEL_DEBUG, "minute ones: %d", buffer[i+2]);
-      // text_layer_set_text(s_text_layer, buffer);
       break;
     }
   }
@@ -805,6 +894,7 @@ static void game_window_unload(Window *window) {
   layer_destroy(s_ball_layer);
   layer_destroy(s_paddle_layer);
   layer_destroy(s_aim_layer);
+  layer_destroy(s_status_layer);
 
   free_block_array();
   free_powerup_array();

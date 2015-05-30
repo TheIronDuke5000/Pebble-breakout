@@ -18,6 +18,16 @@
           "name": "MAP1",
           "file": "map1.dat",
           "type": "raw"
+        },
+        {
+          "name": "ARCADE_FONT_8",
+          "file": "ARCADE_FONT_TTF.ttf",
+          "type": "font"
+        },
+        {
+          "name": "ARCADE_FONT_16",
+          "file": "ARCADE_FONT_TTF.ttf",
+          "type": "font"
         }
       ]
   }
