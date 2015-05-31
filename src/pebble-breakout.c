@@ -25,7 +25,7 @@
                       `  `:::omddhyyhdmdyyyhyyhmh-                                           
                              .dhshddmNNmdmmdhyshho                                           
            `.                `s/ `-/hNmmNNmddhyydm-                                          
-         `-dN/+s                    ymNNMMmdddhyhh.                                          
+         `-dN/ss                    ymNNMMmdddhyhh.                                          
         -dNNMNMN` ``.--.`           hNNNNMNNmhysh:                                           
         sMMNMMMNsydmmNNNmo:`        yNmdmNMNNdysy:                                           
         yNNmmNNNmNNNMMMMMMMd/`     :mmmhhdmmmmmdhs/.`                                        
@@ -70,6 +70,9 @@
 #include <pebble.h>
 
 #define MAX_NUM_POWERUP_DROPS 10 // maximum number of currently dropping powerups
+#define S_PADDLE_MAX_SPEED 8
+#define S_HOLD_AIM_INC TRIG_MAX_ANGLE/0x30;
+#define S_BALL_TIME_PER_DIST 12
 
 static Window *s_menu_window;
 static SimpleMenuLayer *s_menu_layer;
@@ -84,9 +87,6 @@ static int16_t s_ball_dir_angle;
 static PropertyAnimation *s_ball_animation;
 static Layer *s_paddle_layer;
 static int16_t s_paddle_velocity;
-static const int16_t S_PADDLE_MAX_SPEED = 8;
-static const int16_t S_HOLD_AIM_INC = TRIG_MAX_ANGLE/0x30;
-static const int16_t S_BALL_TIME_PER_DIST = 12;
 static Layer **s_block_layer_array;
 static uint16_t s_num_blocks = 0;
 static Layer *s_aim_layer;
@@ -97,19 +97,20 @@ static PropertyAnimation *powerup_animation_array[MAX_NUM_POWERUP_DROPS];
 static uint8_t s_num_lives;
 static uint8_t s_level;
 static uint32_t s_score;
-static uint8_t s_num_lives_old;
-static uint8_t s_level_old;
-static uint32_t s_score_old;
+static GFont s_arcade_font_8;
 
 #define STATUS_LAYER_HEIGHT 16
 #define SCORE_MAX_WIDTH 5
 #define SCORE_BLOCK_KILL 10
+#define SCORE_POWERUP_CATCH 100
 
-#define s_powerup_frame  (GRect) { .origin = {-7, 0}, .size = {32, 20} }
+#define s_powerup_frame  (GRect) { .origin = {(-48+16-6)/2, 0}, .size = {48, 12} }
 
-#define s_powerup_text_frame (GRect) { .origin = {0, 0}, .size = {32, 16} }
+#define s_powerup_text_frame (GRect) { .origin = {0, 0}, .size = {48, 8} }
 
-#define s_powerup_pill_frame (GRect) { .origin = {13, 17}, .size = {6, 3} }
+#define s_powerup_pill_frame (GRect) { .origin = {24, 8}, .size = {6, 3} }
+
+#define PADDLE_ORIGIN_Y 144
 
 #define P_PADDLE_KEY 0        // int for x value of origin of paddle layer
 #define P_BALL_DATA_KEY 1     // array of 3 int16_t, [x, y, angle]    2 bytes per int16_t * 3 = 6 bytes 
@@ -120,6 +121,7 @@ static uint32_t s_score_old;
 #define P_SCORE_KEY 7
 
 #define PADDLE_WIDTH_STANDARD 30
+#define PADDLE_WIDTH_SMALL 16
 #define PADDLE_WIDTH_WIDE 60
 
 typedef enum {
@@ -138,19 +140,37 @@ typedef enum {
   HOLD = 0,
   LASER = 1,
   WIDE = 2,
-  FIRST_BALL_HOLD = 3,
-  NONE = 4
+  SMALL = 3,
+  LIFE = 4,
+
+  FIRST_BALL_HOLD,
+  NONE
 } PowerupTypeEnum;
 
-static const char *s_powerup_names[] =
-  {"HOLD", "LASER", "WIDE", "FIRST_BALL_HOLD", "NONE"};
+static const char *s_powerup_names[] = {
+  "HOLD",
+  "LASER",
+  "WIDE",
+  "SMALL",
+  "LIFE",
+  "FIRST_BALL_HOLD",
+  "NONE"
+};
 
-#ifdef PBL_PLATFORM_BASALT
-  static const uint8_t s_powerup_colors_ARGB8[] = {GColorBlueARGB8, GColorRedARGB8, GColorGreenARGB8, GColorBlackARGB8, GColorBlackARGB8};
+#ifdef PBL_COLOR
+  static const uint8_t s_powerup_colors_ARGB8[] = {
+    GColorBlueARGB8,
+    GColorRedARGB8,
+    GColorYellowARGB8,
+    GColorWindsorTanARGB8,
+    GColorGreenARGB8,
+    GColorBlackARGB8,
+    GColorBlackARGB8
+  };
   #define s_powerup_colors(i)  (GColor8) { .argb = s_powerup_colors_ARGB8[i]}
 #endif
 
-#define NUM_ENUM_POWERUPS 3    // number of powerups that can drop from block kills
+#define NUM_ENUM_POWERUPS 5    // number of powerups that can drop from block kills
 #define POWERUP_FREQ 1    // a power up will randomly appear a chance of 1/POWERUP_FREQ
 
 static PowerupTypeEnum s_active_powerup;
@@ -196,7 +216,7 @@ static void free_block_array() {
   s_num_blocks = 0;
 }
 
-static void free_powerup_array() {
+static void clear_powerup_array() {
   for (int i = 0; i < s_num_powerup_drops; i++) {
     layer_destroy(s_powerup_layer_array[i]);
   }
@@ -222,14 +242,25 @@ static bool powerup_layer_destroy(Layer *powerup_layer) {
 }
 
 static void set_active_powerup(PowerupTypeEnum powerup_type) {
-  s_active_powerup = powerup_type;
-  GRect paddle_frame = layer_get_frame(s_paddle_layer);
-  paddle_frame.size.w = PADDLE_WIDTH_STANDARD;
-  if (s_active_powerup == WIDE) {
-    paddle_frame.size.w = PADDLE_WIDTH_WIDE;
+  if (powerup_type == LIFE) {
+    s_num_lives++;
+    layer_mark_dirty(s_status_layer);
+  } else {
+    s_active_powerup = powerup_type;
+    GRect paddle_frame = layer_get_frame(s_paddle_layer);
+    uint8_t new_size = PADDLE_WIDTH_STANDARD;
+    if (s_active_powerup == WIDE) {
+      new_size = PADDLE_WIDTH_WIDE;
+    } else if (s_active_powerup == SMALL) {
+      new_size = PADDLE_WIDTH_SMALL;
+    }
+    if (new_size != paddle_frame.size.w) {
+      paddle_frame.origin.x += (paddle_frame.size.w - new_size) / 2;
+      paddle_frame.size.w = new_size;
+      layer_set_frame(s_paddle_layer, paddle_frame);
+      layer_mark_dirty(s_paddle_layer);
+    }
   }
-  layer_set_frame(s_paddle_layer, paddle_frame);
-  layer_mark_dirty(s_paddle_layer);
 }
 
 static void ball_animation(uint16_t delay);
@@ -302,6 +333,31 @@ static void move_aim(ClickRecognizerRef recognizer) {
   layer_mark_dirty(s_paddle_layer);
 }
 
+static void reset_paddle() {
+  layer_set_frame(s_paddle_layer, (GRect) {
+    .origin = {100, PADDLE_ORIGIN_Y},
+    .size = {PADDLE_WIDTH_STANDARD, 5}
+  });
+
+  layer_set_frame(s_ball_layer, (GRect) {
+    .origin = {113, PADDLE_ORIGIN_Y-5},
+    .size = {5, 5}
+  });
+
+  layer_set_frame(s_aim_layer, (GRect) {
+    .origin = {100, PADDLE_ORIGIN_Y-17},
+    .size = {PADDLE_WIDTH_STANDARD, 15}
+  });
+
+  int16_t *aim_angle = layer_get_data(s_aim_layer);
+  *aim_angle = -TRIG_MAX_ANGLE/4;
+  set_active_powerup(FIRST_BALL_HOLD);
+  s_is_holding_ball = true;
+  layer_set_hidden(s_aim_layer, false);
+
+  clear_powerup_array();
+}
+
 static void btn_rep_handler(ClickRecognizerRef recognizer, void *context) {
   text_layer_set_text(s_text_layer, "Up Press");
   if ((s_active_powerup == HOLD || s_active_powerup == FIRST_BALL_HOLD) && s_is_holding_ball) {
@@ -366,7 +422,7 @@ static void aim_layer_draw(Layer *layer, GContext *ctx) {
 static void paddle_layer_draw(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
 
-  #ifdef PBL_PLATFORM_BASALT
+  #ifdef PBL_COLOR
     GColor8 paddle_color = s_powerup_colors(s_active_powerup);
   #else
     GColor paddle_color = GColorBlack;
@@ -381,7 +437,7 @@ static void powerup_layer_draw(Layer *layer, GContext *ctx) {
 
   uint8_t *layer_data = layer_get_data(layer);
 
-  #ifdef PBL_PLATFORM_BASALT
+  #ifdef PBL_COLOR
     GColor8 powerup_color = s_powerup_colors(*layer_data);
   #else
     GColor powerup_color = GColorBlack;
@@ -390,22 +446,13 @@ static void powerup_layer_draw(Layer *layer, GContext *ctx) {
   graphics_context_set_fill_color(ctx, powerup_color);
   graphics_context_set_text_color(ctx, powerup_color);
 
-  graphics_draw_text(ctx, s_powerup_names[*layer_data], fonts_get_system_font(FONT_KEY_GOTHIC_14),
+  graphics_draw_text(ctx, s_powerup_names[*layer_data], s_arcade_font_8,
     s_powerup_text_frame, GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
 
   graphics_fill_rect(ctx, s_powerup_pill_frame, s_powerup_pill_frame.size.h/2, GCornersAll);
 }
 
 static void status_layer_draw(Layer *layer, GContext *ctx) {
-  if (s_score == s_score_old && s_num_lives == s_num_lives_old && s_level == s_level_old) {
-    // dont redraw the status bar
-    return;
-  }
-
-  s_score_old = s_score;
-  s_num_lives_old = s_num_lives;
-  s_level_old = s_level;
-
   GRect bounds = layer_get_bounds(layer);
   GRect text_bounds = bounds;
   text_bounds.origin.x += 1;
@@ -422,11 +469,11 @@ static void status_layer_draw(Layer *layer, GContext *ctx) {
   char buffer[buffer_len];
   snprintf(buffer, buffer_len, "yx%d", s_num_lives);
   buffer[0] = '"';
-  graphics_draw_text(ctx, buffer, fonts_load_custom_font(resource_get_handle(RESOURCE_ID_ARCADE_FONT_8)),
+  graphics_draw_text(ctx, buffer, s_arcade_font_8,
     text_bounds, GTextOverflowModeWordWrap, GTextAlignmentLeft, NULL);
 
   snprintf(buffer, buffer_len, "LVL%d", s_level);
-  graphics_draw_text(ctx, buffer, fonts_load_custom_font(resource_get_handle(RESOURCE_ID_ARCADE_FONT_8)),
+  graphics_draw_text(ctx, buffer, s_arcade_font_8,
     text_bounds, GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
 
   char *buff_start = buffer + SCORE_MAX_WIDTH;
@@ -436,7 +483,7 @@ static void status_layer_draw(Layer *layer, GContext *ctx) {
     buff_start[0] = '0';
     num_chars++;
   }
-  graphics_draw_text(ctx, buff_start, fonts_load_custom_font(resource_get_handle(RESOURCE_ID_ARCADE_FONT_8)),
+  graphics_draw_text(ctx, buff_start, s_arcade_font_8,
     text_bounds, GTextOverflowModeWordWrap, GTextAlignmentRight, NULL);
 }
 
@@ -458,6 +505,7 @@ static void powerup_anim_stopped_handler(Animation *animation, bool finished, vo
         pill_frame.origin.x + pill_frame.size.w > paddle_frame.origin.x) {
       text_layer_set_text(s_text_layer, "caught a powerup");
       set_active_powerup((PowerupTypeEnum)(*powerup_data));
+      s_score += SCORE_POWERUP_CATCH;
     }
 
     powerup_layer_destroy(powerup_layer);
@@ -471,6 +519,8 @@ static void drop_powerup(PowerupTypeEnum powerup, Layer *block_layer) {
   frame.origin.x += s_powerup_frame.origin.x;
   frame.origin.y += s_powerup_frame.origin.y;
   frame.size = s_powerup_frame.size;
+
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "before layer_create");
 
   Layer *powerup_layer = layer_create_with_data(frame, 1); // TODO: this line causes issues on phone but not emulator, out of mem??
   uint8_t *layer_data = layer_get_data(powerup_layer);
@@ -495,6 +545,8 @@ static void drop_powerup(PowerupTypeEnum powerup, Layer *block_layer) {
   animation_schedule((Animation*)powerup_animation);
 
   s_num_powerup_drops++;
+
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "after layer_create");
 }
 
 static void hit_block(Layer *block_layer) {
@@ -535,6 +587,10 @@ static BallReflectionTypeEnum ball_reflection(GRect *ball_rect, int16_t *new_bal
 
 
   for (i = 0; i < 200; i++) {
+    if (i > 50) {
+      APP_LOG(APP_LOG_LEVEL_DEBUG, "long path");
+    }
+
     if (i == 0) {
       next_rect.origin.x += ball_dir.x / ball_dir_abs_x;
       next_rect.origin.y += ball_dir.y / ball_dir_abs_y;
@@ -629,6 +685,7 @@ static BallReflectionTypeEnum ball_reflection(GRect *ball_rect, int16_t *new_bal
 }
 
 static void ball_anim_stopped_handler(Animation *animation, bool finished, void *context) {
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "start next stopped handler");
   property_animation_destroy(s_ball_animation);
 
   // Schedule the next one, unless the app is exiting
@@ -639,7 +696,12 @@ static void ball_anim_stopped_handler(Animation *animation, bool finished, void 
     BallReflectionTypeEnum reflect_type = ball_reflection(&ball_rect_changing, &new_ball_dir_angle, &hit);
     if (reflect_type == DEATH) {
       text_layer_set_text(s_text_layer, "DEATH");
-      window_stack_pop(true);
+      s_num_lives--;
+      if (s_num_lives > 0) {
+        reset_paddle();
+      } else {
+        window_stack_pop(true);
+      }
     } else if (reflect_type == PADDLE_HIT && s_active_powerup == HOLD) {
       GRect aim_rect = layer_get_frame(s_aim_layer);
       GRect ball_rect = layer_get_frame(s_ball_layer);
@@ -666,7 +728,9 @@ static void ball_animation(uint16_t delay) {
 
   int i;
   bool hit = false;
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "before ball_reflection in ball_animation");
   BallReflectionTypeEnum reflect_type = ball_reflection(&finish, &new_ball_dir_angle, &hit);
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "after ball_reflection in ball_animation %d, %d, %d", finish.origin.x, finish.origin.y, new_ball_dir_angle);
 
   int16_t rough_dist = abs(finish.origin.x - start.origin.x) +
                        abs(finish.origin.y - start.origin.y);
@@ -681,7 +745,7 @@ static void ball_animation(uint16_t delay) {
   }, NULL);
   animation_schedule((Animation*)s_ball_animation);
 
-  // Increment stage and wrap
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "finish ball_animation");
 }
 
 static void load_map_from_buffer(uint8_t *buffer, uint8_t buffer_len) {
@@ -827,28 +891,27 @@ static void game_window_load(Window *window) {
     .origin = { 0, 10 },
     .size = { bounds.size.w, 20 }
   });
+  text_layer_set_font(s_text_layer, s_arcade_font_8);
   text_layer_set_text(s_text_layer, "Press a button");
   text_layer_set_text_alignment(s_text_layer, GTextAlignmentCenter);
   layer_add_child(s_main_layer, text_layer_get_layer(s_text_layer));
 
-  int16_t paddle_origin_y = 144;
-
   s_ball_layer = layer_create((GRect) {
-    .origin = {113, paddle_origin_y-5},
+    .origin = {113, PADDLE_ORIGIN_Y-5},
     .size = {5, 5}
   });
   layer_set_update_proc(s_ball_layer, ball_layer_draw);
   layer_add_child(s_main_layer, s_ball_layer);
 
   s_paddle_layer = layer_create((GRect) {
-    .origin = {100, paddle_origin_y},
+    .origin = {100, PADDLE_ORIGIN_Y},
     .size = {PADDLE_WIDTH_STANDARD, 5}
   });
   layer_set_update_proc(s_paddle_layer, paddle_layer_draw);
   layer_add_child(s_main_layer, s_paddle_layer);
 
   s_aim_layer = layer_create_with_data((GRect) {
-    .origin = {100, paddle_origin_y-17},
+    .origin = {100, PADDLE_ORIGIN_Y-17},
     .size = {PADDLE_WIDTH_STANDARD, 15}
   }, 2);
   int16_t *aim_angle = layer_get_data(s_aim_layer);
@@ -863,9 +926,7 @@ static void game_window_load(Window *window) {
   } else {
     load_map_from_resource();
 
-    s_ball_dir_angle = TRIG_MAX_ANGLE/8;
-    set_active_powerup(FIRST_BALL_HOLD);
-    s_is_holding_ball = true;
+    reset_paddle();
 
     s_level = 1;
     s_num_lives = 3;
@@ -897,7 +958,7 @@ static void game_window_unload(Window *window) {
   layer_destroy(s_status_layer);
 
   free_block_array();
-  free_powerup_array();
+  clear_powerup_array();
   layer_destroy(s_main_layer);
 }
 
@@ -946,6 +1007,8 @@ static void init(void) {
     window_set_fullscreen(s_main_window, true);
   #endif
 
+  s_arcade_font_8 = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_ARCADE_FONT_8));
+
   window_set_click_config_provider(s_main_window, click_config_provider);
   window_set_window_handlers(s_main_window, (WindowHandlers) {
     .load = game_window_load,
@@ -966,6 +1029,9 @@ static void deinit(void) {
   animation_unschedule_all();
 
   free_block_array();
+  clear_powerup_array();
+
+  fonts_unload_custom_font(s_arcade_font_8);
 
   // Destroy main Window
   window_destroy(s_main_window);
