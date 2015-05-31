@@ -93,7 +93,7 @@ static Layer *s_aim_layer;
 static bool is_resume;
 static Layer *s_powerup_layer_array[MAX_NUM_POWERUP_DROPS];
 static uint8_t s_num_powerup_drops = 0;
-static PropertyAnimation *powerup_animation_array[MAX_NUM_POWERUP_DROPS];
+static PropertyAnimation *s_powerup_animation_array[MAX_NUM_POWERUP_DROPS];
 static uint8_t s_num_lives;
 static uint8_t s_level;
 static uint32_t s_score;
@@ -207,7 +207,7 @@ static int16_t reflect_angle_Y(int16_t angle) {
   return angle;
 }
 
-static void free_block_array() {
+static void block_array_destroy() {
   for (int i = 0; i < s_num_blocks; i++) {
     layer_destroy(s_block_layer_array[i]);
   }
@@ -216,27 +216,43 @@ static void free_block_array() {
   s_num_blocks = 0;
 }
 
-static void clear_powerup_array() {
+static void powerup_array_destroy() {
   for (int i = 0; i < s_num_powerup_drops; i++) {
     layer_destroy(s_powerup_layer_array[i]);
+    if (s_powerup_animation_array[i] != NULL) {
+      property_animation_destroy((PropertyAnimation *)s_powerup_animation_array[i]);
+    }
   }
   s_num_powerup_drops = 0;
 }
 
-static bool powerup_layer_destroy(Layer *powerup_layer) {
+static void powerup_array_clear() {
+  for (int i = 0; i < s_num_powerup_drops; i++) {
+    layer_set_hidden(s_powerup_layer_array[i], true);
+  }
+  s_num_powerup_drops = 0;
+}
+
+static bool powerup_layer_clear(Layer *powerup_layer) {
   bool found_layer = false;
+  layer_set_hidden(powerup_layer, true);
+  uint8_t *layer_data = layer_get_data(powerup_layer);
+  *layer_data = (uint8_t)NONE;
   for (int i = 0; i < s_num_powerup_drops; i++) {
     if (found_layer) {
+      // APP_LOG(APP_LOG_LEVEL_DEBUG, "p-1 %p, p %p", s_powerup_layer_array[i-1], s_powerup_layer_array[i]);
       s_powerup_layer_array[i-1] = s_powerup_layer_array[i];
+      s_powerup_animation_array[i-1] = s_powerup_animation_array[i];
     } else if (powerup_layer == s_powerup_layer_array[i]) {
+      // APP_LOG(APP_LOG_LEVEL_DEBUG, "found pwerup layer to hide %d of %d", i, s_num_powerup_drops);
       found_layer = true;
-      layer_set_hidden(powerup_layer, true);
-      layer_destroy(powerup_layer);
+      // property_animation_destroy((PropertyAnimation *)s_powerup_animation_array[i]);
     }
   }
   if (found_layer) {
     s_num_powerup_drops--;
-    s_powerup_layer_array[s_num_powerup_drops] = NULL;
+    s_powerup_animation_array[s_num_powerup_drops] = NULL;
+    s_powerup_layer_array[s_num_powerup_drops] = powerup_layer;
   }
   return found_layer;
 }
@@ -355,7 +371,7 @@ static void reset_paddle() {
   s_is_holding_ball = true;
   layer_set_hidden(s_aim_layer, false);
 
-  clear_powerup_array();
+  powerup_array_clear();
 }
 
 static void btn_rep_handler(ClickRecognizerRef recognizer, void *context) {
@@ -433,9 +449,8 @@ static void paddle_layer_draw(Layer *layer, GContext *ctx) {
 }
 
 static void powerup_layer_draw(Layer *layer, GContext *ctx) {
-  GRect bounds = layer_get_bounds(layer);
-
   uint8_t *layer_data = layer_get_data(layer);
+  GRect bounds = layer_get_bounds(layer);
 
   #ifdef PBL_COLOR
     GColor8 powerup_color = s_powerup_colors(*layer_data);
@@ -489,7 +504,6 @@ static void status_layer_draw(Layer *layer, GContext *ctx) {
 
 static void powerup_anim_stopped_handler(Animation *animation, bool finished, void *context) {
   property_animation_destroy((PropertyAnimation *)animation);
-  text_layer_set_text(s_text_layer, "powerup hit bottom");
 
   if (context != NULL) {
     Layer *powerup_layer = (Layer *)context;
@@ -503,12 +517,11 @@ static void powerup_anim_stopped_handler(Animation *animation, bool finished, vo
 
     if (pill_frame.origin.x < paddle_frame.origin.x + paddle_frame.size.w &&
         pill_frame.origin.x + pill_frame.size.w > paddle_frame.origin.x) {
-      text_layer_set_text(s_text_layer, "caught a powerup");
       set_active_powerup((PowerupTypeEnum)(*powerup_data));
       s_score += SCORE_POWERUP_CATCH;
     }
 
-    powerup_layer_destroy(powerup_layer);
+    powerup_layer_clear(powerup_layer);
   }
 }
 
@@ -520,22 +533,21 @@ static void drop_powerup(PowerupTypeEnum powerup, Layer *block_layer) {
   frame.origin.y += s_powerup_frame.origin.y;
   frame.size = s_powerup_frame.size;
 
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "before layer_create");
-
-  Layer *powerup_layer = layer_create_with_data(frame, 1); // TODO: this line causes issues on phone but not emulator, out of mem??
+  Layer *powerup_layer = s_powerup_layer_array[s_num_powerup_drops];
   uint8_t *layer_data = layer_get_data(powerup_layer);
   *layer_data = (uint8_t)powerup;
-  s_powerup_layer_array[s_num_powerup_drops] = powerup_layer;
-  layer_set_update_proc(powerup_layer, powerup_layer_draw);
-  layer_add_child(s_main_layer, powerup_layer);
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "powerup drop int %d", *layer_data);
 
+  layer_set_frame(powerup_layer, frame);
+  layer_set_hidden(powerup_layer, false);
+  layer_mark_dirty(powerup_layer);
 
   // Schedule the next animation
   GRect finish = frame;
   GRect paddle_frame = layer_get_frame(s_paddle_layer);
   finish.origin.y = paddle_frame.origin.y - frame.size.h;
   PropertyAnimation *powerup_animation = property_animation_create_layer_frame(powerup_layer, &frame, &finish);
-  powerup_animation_array[s_num_powerup_drops] = powerup_animation;
+  s_powerup_animation_array[s_num_powerup_drops] = powerup_animation;
   animation_set_duration((Animation*)powerup_animation, 3000);
   animation_set_delay((Animation*)powerup_animation, 0);
   animation_set_curve((Animation*)powerup_animation, AnimationCurveLinear);
@@ -545,8 +557,25 @@ static void drop_powerup(PowerupTypeEnum powerup, Layer *block_layer) {
   animation_schedule((Animation*)powerup_animation);
 
   s_num_powerup_drops++;
+}
 
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "after layer_create");
+static void powerup_layers_create() {
+  Layer *powerup_layer;
+  uint8_t *layer_data;
+  GRect frame = (GRect) {
+    .origin = {0, 0},
+    .size = s_powerup_frame.size
+  };
+  for (int i = 0; i < MAX_NUM_POWERUP_DROPS; i++) {
+    powerup_layer = layer_create_with_data(frame, 1);   // TODO: this line causes issues on phone but not emulator, out of mem??
+    layer_data = layer_get_data(powerup_layer);
+    *layer_data = (uint8_t)NONE;
+    s_powerup_layer_array[i] = powerup_layer;
+    layer_set_update_proc(powerup_layer, powerup_layer_draw);
+    layer_add_child(s_main_layer, powerup_layer);
+    layer_set_hidden(powerup_layer, true);
+  }
+  s_num_powerup_drops = 0;
 }
 
 static void hit_block(Layer *block_layer) {
@@ -587,7 +616,7 @@ static BallReflectionTypeEnum ball_reflection(GRect *ball_rect, int16_t *new_bal
 
 
   for (i = 0; i < 200; i++) {
-    if (i > 50) {
+    if (i > 100) {
       APP_LOG(APP_LOG_LEVEL_DEBUG, "long path");
     }
 
@@ -685,7 +714,6 @@ static BallReflectionTypeEnum ball_reflection(GRect *ball_rect, int16_t *new_bal
 }
 
 static void ball_anim_stopped_handler(Animation *animation, bool finished, void *context) {
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "start next stopped handler");
   property_animation_destroy(s_ball_animation);
 
   // Schedule the next one, unless the app is exiting
@@ -728,9 +756,7 @@ static void ball_animation(uint16_t delay) {
 
   int i;
   bool hit = false;
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "before ball_reflection in ball_animation");
   BallReflectionTypeEnum reflect_type = ball_reflection(&finish, &new_ball_dir_angle, &hit);
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "after ball_reflection in ball_animation %d, %d, %d", finish.origin.x, finish.origin.y, new_ball_dir_angle);
 
   int16_t rough_dist = abs(finish.origin.x - start.origin.x) +
                        abs(finish.origin.y - start.origin.y);
@@ -744,8 +770,6 @@ static void ball_animation(uint16_t delay) {
     .stopped = ball_anim_stopped_handler
   }, NULL);
   animation_schedule((Animation*)s_ball_animation);
-
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "finish ball_animation");
 }
 
 static void load_map_from_buffer(uint8_t *buffer, uint8_t buffer_len) {
@@ -770,7 +794,7 @@ static void load_map_from_buffer(uint8_t *buffer, uint8_t buffer_len) {
 }
 
 static void load_map_from_resource() {
-  free_block_array();
+  block_array_destroy();
 
   // Get resource and size
   ResHandle handle = resource_get_handle(RESOURCE_ID_MAP1);
@@ -784,7 +808,7 @@ static void load_map_from_resource() {
 
 static bool load_resume_data_from_persist() {
   if (persist_exists(P_BLOCKS_DATA_KEY)) {
-    free_block_array();
+    block_array_destroy();
 
     uint8_t res_size = persist_get_size(P_BLOCKS_DATA_KEY);
 
@@ -919,6 +943,8 @@ static void game_window_load(Window *window) {
   layer_set_update_proc(s_aim_layer, aim_layer_draw);
   layer_add_child(s_main_layer, s_aim_layer);
 
+  powerup_layers_create();
+
   if (is_resume && load_resume_data_from_persist()) {
     s_is_holding_ball = false;
     layer_set_hidden(s_aim_layer, true);
@@ -957,8 +983,8 @@ static void game_window_unload(Window *window) {
   layer_destroy(s_aim_layer);
   layer_destroy(s_status_layer);
 
-  free_block_array();
-  clear_powerup_array();
+  block_array_destroy();
+  powerup_array_destroy();
   layer_destroy(s_main_layer);
 }
 
@@ -1028,8 +1054,8 @@ static void deinit(void) {
   // Stop any animation in progress
   animation_unschedule_all();
 
-  free_block_array();
-  clear_powerup_array();
+  block_array_destroy();
+  powerup_array_destroy();
 
   fonts_unload_custom_font(s_arcade_font_8);
 

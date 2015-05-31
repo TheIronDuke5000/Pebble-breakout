@@ -6,40 +6,54 @@
 !_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
 BLOCK_HORZ	pebble-breakout.c	/^  BLOCK_HORZ,$/;"	e	enum:__anon1	file:
 BLOCK_VERT	pebble-breakout.c	/^  BLOCK_VERT,$/;"	e	enum:__anon1	file:
+BallReflectionTypeEnum	pebble-breakout.c	/^} BallReflectionTypeEnum;$/;"	t	typeref:enum:__anon1	file:
 DEATH	pebble-breakout.c	/^  DEATH,$/;"	e	enum:__anon1	file:
-FIRST_BALL_HOLD	pebble-breakout.c	/^  FIRST_BALL_HOLD = 3,$/;"	e	enum:__anon2	file:
+FIRST_BALL_HOLD	pebble-breakout.c	/^  FIRST_BALL_HOLD,$/;"	e	enum:__anon2	file:
 HOLD	pebble-breakout.c	/^  HOLD = 0,$/;"	e	enum:__anon2	file:
 IMMINENT_DEATH	pebble-breakout.c	/^  IMMINENT_DEATH,$/;"	e	enum:__anon1	file:
 LASER	pebble-breakout.c	/^  LASER = 1,$/;"	e	enum:__anon2	file:
+LIFE	pebble-breakout.c	/^  LIFE = 4,$/;"	e	enum:__anon2	file:
 MAX_NUM_POWERUP_DROPS	pebble-breakout.c	72;"	d	file:
-NONE	pebble-breakout.c	/^  NONE = 4$/;"	e	enum:__anon2	file:
+NONE	pebble-breakout.c	/^  NONE$/;"	e	enum:__anon2	file:
 NO_REFLECT	pebble-breakout.c	/^  NO_REFLECT$/;"	e	enum:__anon1	file:
-NUM_ENUM_POWERUPS	pebble-breakout.c	136;"	d	file:
+NUM_ENUM_POWERUPS	pebble-breakout.c	173;"	d	file:
 PADDLE_HIT	pebble-breakout.c	/^  PADDLE_HIT,$/;"	e	enum:__anon1	file:
+PADDLE_ORIGIN_Y	pebble-breakout.c	113;"	d	file:
 PADDLE_PHANTOM	pebble-breakout.c	/^  PADDLE_PHANTOM,$/;"	e	enum:__anon1	file:
-POWERUP_FREQ	pebble-breakout.c	137;"	d	file:
-P_BALL_DATA_KEY	pebble-breakout.c	104;"	d	file:
-P_BLOCKS_DATA_KEY	pebble-breakout.c	106;"	d	file:
-P_PADDLE_KEY	pebble-breakout.c	103;"	d	file:
-P_POWERUP_KEY	pebble-breakout.c	105;"	d	file:
-S_BALL_TIME_PER_DIST	pebble-breakout.c	/^static const int16_t S_BALL_TIME_PER_DIST = 12;$/;"	v	file:
-S_HOLD_AIM_INC	pebble-breakout.c	/^static const int16_t S_HOLD_AIM_INC = TRIG_MAX_ANGLE\/0x30;$/;"	v	file:
-S_PADDLE_MAX_SPEED	pebble-breakout.c	/^static const int16_t S_PADDLE_MAX_SPEED = 8;$/;"	v	file:
+PADDLE_WIDTH_SMALL	pebble-breakout.c	124;"	d	file:
+PADDLE_WIDTH_STANDARD	pebble-breakout.c	123;"	d	file:
+PADDLE_WIDTH_WIDE	pebble-breakout.c	125;"	d	file:
+POWERUP_FREQ	pebble-breakout.c	174;"	d	file:
+P_BALL_DATA_KEY	pebble-breakout.c	116;"	d	file:
+P_BLOCKS_DATA_KEY	pebble-breakout.c	118;"	d	file:
+P_LEVEL_KEY	pebble-breakout.c	120;"	d	file:
+P_LIVES_KEY	pebble-breakout.c	119;"	d	file:
+P_PADDLE_KEY	pebble-breakout.c	115;"	d	file:
+P_POWERUP_KEY	pebble-breakout.c	117;"	d	file:
+P_SCORE_KEY	pebble-breakout.c	121;"	d	file:
+PowerupTypeEnum	pebble-breakout.c	/^} PowerupTypeEnum;$/;"	t	typeref:enum:__anon2	file:
+SCORE_BLOCK_KILL	pebble-breakout.c	104;"	d	file:
+SCORE_MAX_WIDTH	pebble-breakout.c	103;"	d	file:
+SCORE_POWERUP_CATCH	pebble-breakout.c	105;"	d	file:
+SMALL	pebble-breakout.c	/^  SMALL = 3,$/;"	e	enum:__anon2	file:
+STATUS_LAYER_HEIGHT	pebble-breakout.c	102;"	d	file:
+S_BALL_TIME_PER_DIST	pebble-breakout.c	75;"	d	file:
+S_HOLD_AIM_INC	pebble-breakout.c	74;"	d	file:
+S_PADDLE_MAX_SPEED	pebble-breakout.c	73;"	d	file:
 WALL_HORZ	pebble-breakout.c	/^  WALL_HORZ,$/;"	e	enum:__anon1	file:
 WALL_VERT	pebble-breakout.c	/^  WALL_VERT,$/;"	e	enum:__anon1	file:
 WIDE	pebble-breakout.c	/^  WIDE = 2,$/;"	e	enum:__anon2	file:
 aim_layer_draw	pebble-breakout.c	/^static void aim_layer_draw(Layer *layer, GContext *ctx) {$/;"	f	file:
 ball_anim_stopped_handler	pebble-breakout.c	/^static void ball_anim_stopped_handler(Animation *animation, bool finished, void *context) {$/;"	f	file:
-ball_animation	pebble-breakout.c	/^static void ball_animation() {$/;"	f	file:
+ball_animation	pebble-breakout.c	/^static void ball_animation(uint16_t delay) {$/;"	f	file:
 ball_layer_draw	pebble-breakout.c	/^static void ball_layer_draw(Layer *layer, GContext *ctx) {$/;"	f	file:
-ball_reflection	pebble-breakout.c	/^static ball_reflection_type ball_reflection(GRect *ball_rect, int16_t *new_ball_dir_angle, bool *hit) {$/;"	f	file:
-ball_reflection_type	pebble-breakout.c	/^} ball_reflection_type;$/;"	t	typeref:enum:__anon1	file:
+ball_reflection	pebble-breakout.c	/^static BallReflectionTypeEnum ball_reflection(GRect *ball_rect, int16_t *new_ball_dir_angle, bool *hit) {$/;"	f	file:
+block_array_destroy	pebble-breakout.c	/^static void block_array_destroy() {$/;"	f	file:
 block_layer_draw	pebble-breakout.c	/^static void block_layer_draw(Layer *layer, GContext *ctx) {$/;"	f	file:
 btn_rep_handler	pebble-breakout.c	/^static void btn_rep_handler(ClickRecognizerRef recognizer, void *context) {$/;"	f	file:
 click_config_provider	pebble-breakout.c	/^static void click_config_provider(void *context) {$/;"	f	file:
 deinit	pebble-breakout.c	/^static void deinit(void) {$/;"	f	file:
-drop_powerup	pebble-breakout.c	/^static void drop_powerup(powerup_type powerup, Layer *block_layer) {$/;"	f	file:
-free_block_array	pebble-breakout.c	/^static void free_block_array() {$/;"	f	file:
+drop_powerup	pebble-breakout.c	/^static void drop_powerup(PowerupTypeEnum powerup, Layer *block_layer) {$/;"	f	file:
 game_window_load	pebble-breakout.c	/^static void game_window_load(Window *window) {$/;"	f	file:
 game_window_unload	pebble-breakout.c	/^static void game_window_unload(Window *window) {$/;"	f	file:
 get_ball_dir_point	pebble-breakout.c	/^static GPoint get_ball_dir_point() {$/;"	f	file:
@@ -48,11 +62,11 @@ init	pebble-breakout.c	/^static void init(void) {$/;"	f	file:
 is_resume	pebble-breakout.c	/^static bool is_resume;$/;"	v	file:
 load_map_from_buffer	pebble-breakout.c	/^static void load_map_from_buffer(uint8_t *buffer, uint8_t buffer_len) {$/;"	f	file:
 load_map_from_resource	pebble-breakout.c	/^static void load_map_from_resource() {$/;"	f	file:
-load_resume_data_from_persist	pebble-breakout.c	/^static uint8_t load_resume_data_from_persist() {$/;"	f	file:
+load_resume_data_from_persist	pebble-breakout.c	/^static bool load_resume_data_from_persist() {$/;"	f	file:
 main	pebble-breakout.c	/^int main(void) {$/;"	f
 max	pebble-breakout.c	/^static int16_t max(int16_t a, int16_t b) {$/;"	f	file:
-menu_new_game_callback	pebble-breakout.c	/^void menu_new_game_callback(int index, void *context) {$/;"	f
-menu_resume_callback	pebble-breakout.c	/^void menu_resume_callback(int index, void *context) {$/;"	f
+menu_new_game_callback	pebble-breakout.c	/^static void menu_new_game_callback(int index, void *context) {$/;"	f	file:
+menu_resume_callback	pebble-breakout.c	/^static void menu_resume_callback(int index, void *context) {$/;"	f	file:
 menu_window_load	pebble-breakout.c	/^static void menu_window_load(Window *window) {$/;"	f	file:
 menu_window_unload	pebble-breakout.c	/^static void menu_window_unload(Window *window) {$/;"	f	file:
 min	pebble-breakout.c	/^static int16_t min(int16_t a, int16_t b) {$/;"	f	file:
@@ -61,34 +75,45 @@ move_paddle	pebble-breakout.c	/^static void move_paddle(ClickRecognizerRef recog
 paddle_layer_draw	pebble-breakout.c	/^static void paddle_layer_draw(Layer *layer, GContext *ctx) {$/;"	f	file:
 persist_resume_data	pebble-breakout.c	/^static void persist_resume_data() {$/;"	f	file:
 powerup_anim_stopped_handler	pebble-breakout.c	/^static void powerup_anim_stopped_handler(Animation *animation, bool finished, void *context) {$/;"	f	file:
-powerup_animation_array	pebble-breakout.c	/^static PropertyAnimation *powerup_animation_array[MAX_NUM_POWERUP_DROPS];$/;"	v	file:
-powerup_colors	pebble-breakout.c	133;"	d	file:
-powerup_colors_ARGB8	pebble-breakout.c	/^  static const uint8_t powerup_colors_ARGB8[] = {GColorBlueARGB8, GColorRedARGB8, GColorGreenARGB8, GColorBlackARGB8, GColorBlackARGB8};$/;"	v	file:
+powerup_array_clear	pebble-breakout.c	/^static void powerup_array_clear() {$/;"	f	file:
+powerup_array_destroy	pebble-breakout.c	/^static void powerup_array_destroy() {$/;"	f	file:
+powerup_layer_clear	pebble-breakout.c	/^static bool powerup_layer_clear(Layer *powerup_layer) {$/;"	f	file:
 powerup_layer_draw	pebble-breakout.c	/^static void powerup_layer_draw(Layer *layer, GContext *ctx) {$/;"	f	file:
-powerup_names	pebble-breakout.c	/^static const char *powerup_names[] =$/;"	v	file:
-powerup_type	pebble-breakout.c	/^} powerup_type;$/;"	t	typeref:enum:__anon2	file:
+powerup_layers_create	pebble-breakout.c	/^static void powerup_layers_create() {$/;"	f	file:
 reflect_angle_X	pebble-breakout.c	/^static int16_t reflect_angle_X(int16_t angle) {$/;"	f	file:
 reflect_angle_Y	pebble-breakout.c	/^static int16_t reflect_angle_Y(int16_t angle) {$/;"	f	file:
+reset_paddle	pebble-breakout.c	/^static void reset_paddle() {$/;"	f	file:
+s_active_powerup	pebble-breakout.c	/^static PowerupTypeEnum s_active_powerup;$/;"	v	file:
 s_aim_layer	pebble-breakout.c	/^static Layer *s_aim_layer;$/;"	v	file:
+s_arcade_font_8	pebble-breakout.c	/^static GFont s_arcade_font_8;$/;"	v	file:
 s_ball_animation	pebble-breakout.c	/^static PropertyAnimation *s_ball_animation;$/;"	v	file:
 s_ball_dir_angle	pebble-breakout.c	/^static int16_t s_ball_dir_angle;$/;"	v	file:
 s_ball_layer	pebble-breakout.c	/^static Layer *s_ball_layer;$/;"	v	file:
 s_block_layer_array	pebble-breakout.c	/^static Layer **s_block_layer_array;$/;"	v	file:
 s_is_holding_ball	pebble-breakout.c	/^static bool s_is_holding_ball;$/;"	v	file:
+s_level	pebble-breakout.c	/^static uint8_t s_level;$/;"	v	file:
 s_main_layer	pebble-breakout.c	/^static Layer *s_main_layer;$/;"	v	file:
 s_main_window	pebble-breakout.c	/^static Window *s_main_window;$/;"	v	file:
 s_menu_items	pebble-breakout.c	/^static SimpleMenuItem s_menu_items[2];$/;"	v	file:
 s_menu_layer	pebble-breakout.c	/^static SimpleMenuLayer *s_menu_layer;$/;"	v	file:
 s_menu_section	pebble-breakout.c	/^static SimpleMenuSection s_menu_section;$/;"	v	file:
 s_menu_window	pebble-breakout.c	/^static Window *s_menu_window;$/;"	v	file:
-s_num_blocks	pebble-breakout.c	/^static uint16_t s_num_blocks;$/;"	v	file:
-s_num_powerup_drops	pebble-breakout.c	/^static uint8_t s_num_powerup_drops;$/;"	v	file:
+s_num_blocks	pebble-breakout.c	/^static uint16_t s_num_blocks = 0;$/;"	v	file:
+s_num_lives	pebble-breakout.c	/^static uint8_t s_num_lives;$/;"	v	file:
+s_num_powerup_drops	pebble-breakout.c	/^static uint8_t s_num_powerup_drops = 0;$/;"	v	file:
 s_paddle_layer	pebble-breakout.c	/^static Layer *s_paddle_layer;$/;"	v	file:
 s_paddle_velocity	pebble-breakout.c	/^static int16_t s_paddle_velocity;$/;"	v	file:
-s_powerup	pebble-breakout.c	/^static powerup_type s_powerup;$/;"	v	file:
-s_powerup_frame	pebble-breakout.c	97;"	d	file:
+s_powerup_animation_array	pebble-breakout.c	/^static PropertyAnimation *s_powerup_animation_array[MAX_NUM_POWERUP_DROPS];$/;"	v	file:
+s_powerup_colors	pebble-breakout.c	170;"	d	file:
+s_powerup_colors_ARGB8	pebble-breakout.c	/^  static const uint8_t s_powerup_colors_ARGB8[] = {$/;"	v	file:
+s_powerup_frame	pebble-breakout.c	107;"	d	file:
 s_powerup_layer_array	pebble-breakout.c	/^static Layer *s_powerup_layer_array[MAX_NUM_POWERUP_DROPS];$/;"	v	file:
-s_powerup_pill_frame	pebble-breakout.c	101;"	d	file:
-s_powerup_text_frame	pebble-breakout.c	99;"	d	file:
+s_powerup_names	pebble-breakout.c	/^static const char *s_powerup_names[] = {$/;"	v	file:
+s_powerup_pill_frame	pebble-breakout.c	111;"	d	file:
+s_powerup_text_frame	pebble-breakout.c	109;"	d	file:
+s_score	pebble-breakout.c	/^static uint32_t s_score;$/;"	v	file:
+s_status_layer	pebble-breakout.c	/^static Layer *s_status_layer;$/;"	v	file:
 s_text_layer	pebble-breakout.c	/^static TextLayer *s_text_layer;$/;"	v	file:
 select_click_handler	pebble-breakout.c	/^static void select_click_handler(ClickRecognizerRef recognizer, void *context) {$/;"	f	file:
+set_active_powerup	pebble-breakout.c	/^static void set_active_powerup(PowerupTypeEnum powerup_type) {$/;"	f	file:
+status_layer_draw	pebble-breakout.c	/^static void status_layer_draw(Layer *layer, GContext *ctx) {$/;"	f	file:
