@@ -779,6 +779,9 @@ static void hit_block(Layer *block_layer, PowerupTypeEnum hit_by_powerup) {
     // destroyed block
   } else {
     (*block_data)--;
+    if (hit_by_powerup == PLASMA) {
+      *block_data = 0;
+    }
     layer_mark_dirty(block_layer);
 
     if (*block_data == 0) {
@@ -790,7 +793,7 @@ static void hit_block(Layer *block_layer, PowerupTypeEnum hit_by_powerup) {
     uint16_t random_number = rand() % (NUM_ENUM_POWERUPS*POWERUP_FREQ);
     if (random_number < NUM_ENUM_POWERUPS && s_num_powerup_drops < MAX_NUM_POWERUP_DROPS) {
       // PowerupTypeEnum powerup = (PowerupTypeEnum)random_number;
-      PowerupTypeEnum powerup = BOMB;
+      PowerupTypeEnum powerup = PLASMA;
       drop_powerup(powerup, block_layer);
     }
 
@@ -902,7 +905,9 @@ static BallReflectionTypeEnum ball_reflection(GRect *ball_rect, int16_t *new_bal
               next_rect.origin.x < block_frame.origin.x + block_frame.size.w &&
               next_rect.origin.x + next_rect.size.w > block_frame.origin.x) {
             if (*hit) {
-              *new_ball_dir_angle = reflect_angle_X(*new_ball_dir_angle);
+              if (s_active_powerup != PLASMA) {
+                *new_ball_dir_angle = reflect_angle_X(*new_ball_dir_angle);
+              }
               hit_block(s_block_layer_array[j], NONE);
             }
             return BLOCK_HORZ;
@@ -911,7 +916,9 @@ static BallReflectionTypeEnum ball_reflection(GRect *ball_rect, int16_t *new_bal
                      (next_rect.origin.x +1 == block_frame.origin.x + block_frame.size.w ||
                      next_rect.origin.x + next_rect.size.w -1 == block_frame.origin.x)) {
             if (*hit) {
-              *new_ball_dir_angle = reflect_angle_Y(*new_ball_dir_angle);
+              if (s_active_powerup != PLASMA) {
+                *new_ball_dir_angle = reflect_angle_Y(*new_ball_dir_angle);
+              }
               hit_block(s_block_layer_array[j], NONE);
             }
             return BLOCK_VERT;
