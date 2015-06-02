@@ -77,6 +77,8 @@
 #define POWERUP_TIME_PER_DIST 50
 #define LASER_FIRE_TIME_PER_DIST 6
 
+#define BOMB_BLAST_RADIUS 20
+
 static Window *s_menu_window;
 static SimpleMenuLayer *s_menu_layer;
 static Layer *s_status_layer;
@@ -151,6 +153,8 @@ typedef enum {
   WIDE = 2,
   SMALL = 3,
   LIFE = 4,
+  BOMB = 5,
+  PLASMA = 6,
 
   FIRST_BALL_HOLD,
   NONE
@@ -162,6 +166,8 @@ static const char *s_powerup_names[] = {
   "WIDE",
   "SMALL",
   "LIFE",
+  "BOMB",
+  "PLASMA",
   "FIRST_BALL_HOLD",
   "NONE"
 };
@@ -170,16 +176,18 @@ static const char *s_powerup_names[] = {
   static const uint8_t s_powerup_colors_ARGB8[] = {
     GColorBlueARGB8,
     GColorRedARGB8,
-    GColorYellowARGB8,
+    GColorChromeYellowARGB8,
     GColorWindsorTanARGB8,
     GColorGreenARGB8,
+    GColorCyanARGB8,
+    GColorFashionMagentaARGB8,
     GColorBlackARGB8,
     GColorBlackARGB8
   };
   #define s_powerup_colors(i)  (GColor8) { .argb = s_powerup_colors_ARGB8[i]}
 #endif
 
-#define NUM_ENUM_POWERUPS 5    // number of powerups that can drop from block kills
+#define NUM_ENUM_POWERUPS 7    // number of powerups that can drop from block kills
 #define POWERUP_FREQ 1    // a power up will randomly appear a chance of 1/POWERUP_FREQ
 
 static PowerupTypeEnum s_active_powerup;
@@ -595,7 +603,7 @@ static void click_config_provider(void *context) {
 
 
 
-static void hit_block(Layer *block_layer);
+static void hit_block(Layer *block_layer, PowerupTypeEnum hit_by_powerup);
 static void scehdule_laser_animation(Layer *laser_fire_layer);
 
 static void laser_fire_find_end(Layer *laser_fire_layer, GRect *finish, Layer **block_layer, bool *hit) {
@@ -642,7 +650,7 @@ static void laser_fire_anim_stopped_handler(Animation *animation, bool finished,
 
     if (hit) {
       if (block_layer != NULL) {
-        hit_block(block_layer);
+        hit_block(block_layer, LASER);
       }
       laser_fire_layer_clear(laser_fire_layer);
     } else {
@@ -763,7 +771,7 @@ static void drop_powerup(PowerupTypeEnum powerup, Layer *block_layer) {
   s_num_powerup_drops++;
 }
 
-static void hit_block(Layer *block_layer) {
+static void hit_block(Layer *block_layer, PowerupTypeEnum hit_by_powerup) {
   uint8_t *block_data = layer_get_data(block_layer);
   if (*block_data == 0xff) {
     // solid block
@@ -778,14 +786,37 @@ static void hit_block(Layer *block_layer) {
       // layer_mark_dirty(s_status_layer);
     }
 
-    // TODO: check if level is finished
 
     uint16_t random_number = rand() % (NUM_ENUM_POWERUPS*POWERUP_FREQ);
     if (random_number < NUM_ENUM_POWERUPS && s_num_powerup_drops < MAX_NUM_POWERUP_DROPS) {
       // PowerupTypeEnum powerup = (PowerupTypeEnum)random_number;
-      PowerupTypeEnum powerup = LASER;
+      PowerupTypeEnum powerup = BOMB;
       drop_powerup(powerup, block_layer);
     }
+
+    if (s_active_powerup == BOMB && hit_by_powerup != BOMB) {
+      GRect block_frame;
+      GPoint block_centre;
+      GRect ball_frame = layer_get_frame(s_ball_layer);
+      GRect blast_frame = (GRect) {
+        .origin = {
+          ball_frame.origin.x - BOMB_BLAST_RADIUS,
+          ball_frame.origin.y - BOMB_BLAST_RADIUS
+        },
+        .size = {
+          BOMB_BLAST_RADIUS*2,
+          BOMB_BLAST_RADIUS*2
+        }
+      };
+      for (int i = 0; i < s_num_blocks; i++) {
+        block_frame = layer_get_frame(s_block_layer_array[i]);
+        block_centre = grect_center_point(&block_frame);
+        if (grect_contains_point(&blast_frame, &block_centre)) {
+          hit_block(s_block_layer_array[i], BOMB);
+        }
+      }
+    }
+    // TODO: check if level is finished
   }
 }
 
@@ -872,7 +903,7 @@ static BallReflectionTypeEnum ball_reflection(GRect *ball_rect, int16_t *new_bal
               next_rect.origin.x + next_rect.size.w > block_frame.origin.x) {
             if (*hit) {
               *new_ball_dir_angle = reflect_angle_X(*new_ball_dir_angle);
-              hit_block(s_block_layer_array[j]);
+              hit_block(s_block_layer_array[j], NONE);
             }
             return BLOCK_HORZ;
           } else if (next_rect.origin.y < block_frame.origin.y + block_frame.size.h &&
@@ -881,7 +912,7 @@ static BallReflectionTypeEnum ball_reflection(GRect *ball_rect, int16_t *new_bal
                      next_rect.origin.x + next_rect.size.w -1 == block_frame.origin.x)) {
             if (*hit) {
               *new_ball_dir_angle = reflect_angle_Y(*new_ball_dir_angle);
-              hit_block(s_block_layer_array[j]);
+              hit_block(s_block_layer_array[j], NONE);
             }
             return BLOCK_VERT;
           }
