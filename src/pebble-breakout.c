@@ -69,10 +69,13 @@
 
 #include <pebble.h>
 
-#define MAX_NUM_POWERUP_DROPS 10 // maximum number of currently dropping powerups
-#define S_PADDLE_MAX_SPEED 8
-#define S_HOLD_AIM_INC TRIG_MAX_ANGLE/0x30;
-#define S_BALL_TIME_PER_DIST 12
+#define MAX_NUM_POWERUP_DROPS 10  // maximum number of currently dropping powerups
+#define MAX_NUM_LASER_FIRE 20     // maximum number of laser fire in the air
+#define PADDLE_MAX_SPEED 8
+#define HOLD_AIM_INC TRIG_MAX_ANGLE/0x30;
+#define BALL_TIME_PER_DIST 12
+#define POWERUP_TIME_PER_DIST 50
+#define LASER_FIRE_TIME_PER_DIST 6
 
 static Window *s_menu_window;
 static SimpleMenuLayer *s_menu_layer;
@@ -82,6 +85,7 @@ static SimpleMenuItem s_menu_items[2];
 static Window *s_main_window;
 static Layer *s_main_layer;
 static TextLayer *s_text_layer;
+static char s_text_layer_text[20];
 static Layer *s_ball_layer;
 static int16_t s_ball_dir_angle;
 static PropertyAnimation *s_ball_animation;
@@ -92,12 +96,15 @@ static uint16_t s_num_blocks = 0;
 static Layer *s_aim_layer;
 static bool is_resume;
 static Layer *s_powerup_layer_array[MAX_NUM_POWERUP_DROPS];
-static uint8_t s_num_powerup_drops = 0;
 static PropertyAnimation *s_powerup_animation_array[MAX_NUM_POWERUP_DROPS];
+static uint8_t s_num_powerup_drops = 0;
 static uint8_t s_num_lives;
 static uint8_t s_level;
 static uint32_t s_score;
 static GFont s_arcade_font_8;
+static Layer *s_laser_fire_layer_array[MAX_NUM_LASER_FIRE];
+static PropertyAnimation *s_laser_fire_animation_array[MAX_NUM_LASER_FIRE];
+static uint8_t s_num_laser_fire = 0;
 
 #define STATUS_LAYER_HEIGHT 16
 #define SCORE_MAX_WIDTH 5
@@ -109,6 +116,8 @@ static GFont s_arcade_font_8;
 #define s_powerup_text_frame (GRect) { .origin = {0, 0}, .size = {48, 8} }
 
 #define s_powerup_pill_frame (GRect) { .origin = {24, 8}, .size = {6, 3} }
+
+#define s_laser_fire_frame (GRect) { .origin = {-1, -5}, .size = {3, 5}}
 
 #define PADDLE_ORIGIN_Y 144
 
@@ -205,188 +214,6 @@ static int16_t reflect_angle_X(int16_t angle) {
 static int16_t reflect_angle_Y(int16_t angle) {
   angle = (angle - TRIG_MAX_ANGLE/2)* -1;
   return angle;
-}
-
-static void block_array_destroy() {
-  for (int i = 0; i < s_num_blocks; i++) {
-    layer_destroy(s_block_layer_array[i]);
-  }
-  free(s_block_layer_array);
-  s_block_layer_array = NULL;
-  s_num_blocks = 0;
-}
-
-static void powerup_array_destroy() {
-  for (int i = 0; i < s_num_powerup_drops; i++) {
-    layer_destroy(s_powerup_layer_array[i]);
-    if (s_powerup_animation_array[i] != NULL) {
-      property_animation_destroy((PropertyAnimation *)s_powerup_animation_array[i]);
-    }
-  }
-  s_num_powerup_drops = 0;
-}
-
-static void powerup_array_clear() {
-  for (int i = 0; i < s_num_powerup_drops; i++) {
-    layer_set_hidden(s_powerup_layer_array[i], true);
-  }
-  s_num_powerup_drops = 0;
-}
-
-static bool powerup_layer_clear(Layer *powerup_layer) {
-  bool found_layer = false;
-  layer_set_hidden(powerup_layer, true);
-  uint8_t *layer_data = layer_get_data(powerup_layer);
-  *layer_data = (uint8_t)NONE;
-  for (int i = 0; i < s_num_powerup_drops; i++) {
-    if (found_layer) {
-      // APP_LOG(APP_LOG_LEVEL_DEBUG, "p-1 %p, p %p", s_powerup_layer_array[i-1], s_powerup_layer_array[i]);
-      s_powerup_layer_array[i-1] = s_powerup_layer_array[i];
-      s_powerup_animation_array[i-1] = s_powerup_animation_array[i];
-    } else if (powerup_layer == s_powerup_layer_array[i]) {
-      // APP_LOG(APP_LOG_LEVEL_DEBUG, "found pwerup layer to hide %d of %d", i, s_num_powerup_drops);
-      found_layer = true;
-      // property_animation_destroy((PropertyAnimation *)s_powerup_animation_array[i]);
-    }
-  }
-  if (found_layer) {
-    s_num_powerup_drops--;
-    s_powerup_animation_array[s_num_powerup_drops] = NULL;
-    s_powerup_layer_array[s_num_powerup_drops] = powerup_layer;
-  }
-  return found_layer;
-}
-
-static void set_active_powerup(PowerupTypeEnum powerup_type) {
-  if (powerup_type == LIFE) {
-    s_num_lives++;
-    layer_mark_dirty(s_status_layer);
-  } else {
-    s_active_powerup = powerup_type;
-    GRect paddle_frame = layer_get_frame(s_paddle_layer);
-    uint8_t new_size = PADDLE_WIDTH_STANDARD;
-    if (s_active_powerup == WIDE) {
-      new_size = PADDLE_WIDTH_WIDE;
-    } else if (s_active_powerup == SMALL) {
-      new_size = PADDLE_WIDTH_SMALL;
-    }
-    if (new_size != paddle_frame.size.w) {
-      paddle_frame.origin.x += (paddle_frame.size.w - new_size) / 2;
-      paddle_frame.size.w = new_size;
-      layer_set_frame(s_paddle_layer, paddle_frame);
-      layer_mark_dirty(s_paddle_layer);
-    }
-  }
-}
-
-static void ball_animation(uint16_t delay);
-
-static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
-  text_layer_set_text(s_text_layer, "Select");
-
-  if ((s_active_powerup == HOLD || s_active_powerup == FIRST_BALL_HOLD) && s_is_holding_ball) {
-    layer_set_hidden(s_aim_layer, true);
-    int16_t *aim_angle = layer_get_data(s_aim_layer);
-    s_ball_dir_angle = *aim_angle;
-    s_is_holding_ball = false;
-    ball_animation(0);
-  } else if (s_active_powerup == LASER) {
-    // TODO: shoot laser
-  }
-}
-
-static void move_paddle(ClickRecognizerRef recognizer) {
-  int16_t numClicks = click_number_of_clicks_counted(recognizer);
-  ButtonId buttonId = click_recognizer_get_button_id(recognizer);
-  int16_t dirSign = 1;
-  if (buttonId == BUTTON_ID_UP) {
-    dirSign = -1;
-  } else if (buttonId == BUTTON_ID_DOWN) {
-    dirSign = 1;
-  }
-
-  s_paddle_velocity = S_PADDLE_MAX_SPEED;
-  if (numClicks <= 2) {
-    s_paddle_velocity = S_PADDLE_MAX_SPEED/2;
-  }
-
-  s_paddle_velocity *= dirSign;
-  GRect frame = layer_get_frame(s_paddle_layer);
-  GRect main_frame = layer_get_frame(s_main_layer);
-
-  int16_t new_x = frame.origin.x + s_paddle_velocity;
-  if (new_x < 0) {
-    new_x = 0;
-  } else if (new_x + frame.size.w > main_frame.size.w) {
-    new_x = main_frame.size.w - frame.size.w;
-  }
-  frame.origin.x = new_x;
-  layer_set_frame(s_paddle_layer, frame);
-  layer_mark_dirty(s_paddle_layer);
-}
-
-static void move_aim(ClickRecognizerRef recognizer) {
-  int16_t numClicks = click_number_of_clicks_counted(recognizer);
-  ButtonId buttonId = click_recognizer_get_button_id(recognizer);
-  int16_t dirSign = 1;
-  if (buttonId == BUTTON_ID_UP) {
-    dirSign = -1;
-  } else if (buttonId == BUTTON_ID_DOWN) {
-    dirSign = 1;
-  }
-
-  int16_t aim_inc = 0;
-  if (numClicks % 4 == 1) {
-    aim_inc = S_HOLD_AIM_INC;
-  }
-
-  aim_inc *= dirSign;
-  int16_t *aim_angle = (int16_t *) layer_get_data(s_aim_layer);
-  int16_t new_angle = *aim_angle + aim_inc;
-  if (new_angle < -TRIG_MAX_ANGLE*1/8 && new_angle > -TRIG_MAX_ANGLE*3/8) {
-    *aim_angle = new_angle;
-  }
-  layer_mark_dirty(s_paddle_layer);
-}
-
-static void reset_paddle() {
-  layer_set_frame(s_paddle_layer, (GRect) {
-    .origin = {100, PADDLE_ORIGIN_Y},
-    .size = {PADDLE_WIDTH_STANDARD, 5}
-  });
-
-  layer_set_frame(s_ball_layer, (GRect) {
-    .origin = {113, PADDLE_ORIGIN_Y-5},
-    .size = {5, 5}
-  });
-
-  layer_set_frame(s_aim_layer, (GRect) {
-    .origin = {100, PADDLE_ORIGIN_Y-17},
-    .size = {PADDLE_WIDTH_STANDARD, 15}
-  });
-
-  int16_t *aim_angle = layer_get_data(s_aim_layer);
-  *aim_angle = -TRIG_MAX_ANGLE/4;
-  set_active_powerup(FIRST_BALL_HOLD);
-  s_is_holding_ball = true;
-  layer_set_hidden(s_aim_layer, false);
-
-  powerup_array_clear();
-}
-
-static void btn_rep_handler(ClickRecognizerRef recognizer, void *context) {
-  text_layer_set_text(s_text_layer, "Up Press");
-  if ((s_active_powerup == HOLD || s_active_powerup == FIRST_BALL_HOLD) && s_is_holding_ball) {
-    move_aim(recognizer);
-  } else {
-    move_paddle(recognizer);
-  }
-}
-
-static void click_config_provider(void *context) {
-  window_single_click_subscribe(BUTTON_ID_SELECT, select_click_handler);
-  window_single_repeating_click_subscribe(BUTTON_ID_UP, 30, btn_rep_handler);
-  window_single_repeating_click_subscribe(BUTTON_ID_DOWN, 30, btn_rep_handler);
 }
 
 static void block_layer_draw(Layer *layer, GContext *ctx) {
@@ -502,10 +329,386 @@ static void status_layer_draw(Layer *layer, GContext *ctx) {
     text_bounds, GTextOverflowModeWordWrap, GTextAlignmentRight, NULL);
 }
 
+static void laser_fire_layer_draw(Layer *layer, GContext *ctx) {
+  GRect bounds = layer_get_bounds(layer);
+
+  #ifdef PBL_COLOR
+    GColor8 fire_color = GColorRed;
+  #else
+    GColor fire_color = GColorBlack;
+  #endif
+
+  graphics_context_set_fill_color(ctx, fire_color);
+  graphics_fill_rect(ctx, bounds, bounds.size.h, GCornersAll);
+}
+
+static void block_array_destroy() {
+  for (int i = 0; i < s_num_blocks; i++) {
+    layer_destroy(s_block_layer_array[i]);
+  }
+  free(s_block_layer_array);
+  s_block_layer_array = NULL;
+  s_num_blocks = 0;
+}
+
+static void powerup_array_destroy() {
+  for (int i = 0; i < s_num_powerup_drops; i++) {
+    layer_destroy(s_powerup_layer_array[i]);
+    if (s_powerup_animation_array[i] != NULL) {
+      property_animation_destroy((PropertyAnimation *)s_powerup_animation_array[i]);
+    }
+  }
+  s_num_powerup_drops = 0;
+}
+
+static void powerup_array_clear() {
+  for (int i = 0; i < MAX_NUM_POWERUP_DROPS; i++) {
+    layer_set_hidden(s_powerup_layer_array[i], true);
+    if (s_powerup_animation_array[i] != NULL) {
+      animation_unschedule((Animation *)s_powerup_animation_array[i]);
+    }
+  }
+  s_num_powerup_drops = 0;
+}
+
+static bool powerup_layer_clear(Layer *powerup_layer) {
+  bool found_layer = false;
+  layer_set_hidden(powerup_layer, true);
+  uint8_t *layer_data = layer_get_data(powerup_layer);
+  *layer_data = (uint8_t)NONE;
+  for (int i = 0; i < s_num_powerup_drops; i++) {
+    if (found_layer) {
+      s_powerup_layer_array[i-1] = s_powerup_layer_array[i];
+      s_powerup_animation_array[i-1] = s_powerup_animation_array[i];
+    } else if (powerup_layer == s_powerup_layer_array[i]) {
+      found_layer = true;
+    }
+  }
+  if (found_layer) {
+    s_num_powerup_drops--;
+    s_powerup_layer_array[s_num_powerup_drops] = powerup_layer;
+  }
+  return found_layer;
+}
+
+static void powerup_layers_create() {
+  Layer *powerup_layer;
+  uint8_t *layer_data;
+  GRect frame = (GRect) {
+    .origin = {0, 0},
+    .size = s_powerup_frame.size
+  };
+  for (int i = 0; i < MAX_NUM_POWERUP_DROPS; i++) {
+    powerup_layer = layer_create_with_data(frame, 1);
+    layer_data = layer_get_data(powerup_layer);
+    *layer_data = (uint8_t)NONE;
+    s_powerup_layer_array[i] = powerup_layer;
+    layer_set_update_proc(powerup_layer, powerup_layer_draw);
+    layer_add_child(s_main_layer, powerup_layer);
+    layer_set_hidden(powerup_layer, true);
+  }
+  s_num_powerup_drops = 0;
+}
+
+static void laser_fire_array_destroy() {
+  for (int i = 0; i < s_num_laser_fire; i++) {
+    layer_destroy(s_laser_fire_layer_array[i]);
+    if (s_laser_fire_animation_array[i] != NULL) {
+      property_animation_destroy((PropertyAnimation *)s_laser_fire_animation_array[i]);
+    }
+  }
+  s_num_laser_fire = 0;
+}
+
+static void laser_fire_array_clear() {
+  for (int i = 0; i < MAX_NUM_LASER_FIRE; i++) {
+    layer_set_hidden(s_laser_fire_layer_array[i], true);
+    if (s_laser_fire_animation_array[i] != NULL) {
+      animation_unschedule((Animation *)s_laser_fire_animation_array[i]);
+    }
+  }
+  s_num_laser_fire = 0;
+}
+
+static bool laser_fire_layer_clear(Layer *laser_fire_layer) {
+  bool found_layer = false;
+  layer_set_hidden(laser_fire_layer, true);
+  for (int i = 0; i < s_num_laser_fire; i++) {
+    if (found_layer) {
+      s_laser_fire_layer_array[i-1] = s_laser_fire_layer_array[i];
+      s_laser_fire_animation_array[i-1] = s_laser_fire_animation_array[i];
+    } else if (laser_fire_layer == s_laser_fire_layer_array[i]) {
+      found_layer = true;
+    }
+  }
+  if (found_layer) {
+    s_num_laser_fire--;
+    s_laser_fire_layer_array[s_num_laser_fire] = laser_fire_layer;
+  }
+  return found_layer;
+}
+
+static void laser_fire_layers_create() {
+  Layer *laser_layer;
+  GRect frame = s_laser_fire_frame;
+  for (int i = 0; i < MAX_NUM_LASER_FIRE; i++) {
+    laser_layer = layer_create(frame);
+    s_laser_fire_layer_array[i] = laser_layer;
+    layer_set_update_proc(laser_layer, laser_fire_layer_draw);
+    layer_add_child(s_main_layer, laser_layer);
+    layer_set_hidden(laser_layer, true);
+  }
+  s_num_laser_fire = 0;
+}
+
+static void shoot_laser();
+
+static void set_active_powerup(PowerupTypeEnum powerup_type) {
+  if (powerup_type == LIFE) {
+    s_num_lives++;
+    layer_mark_dirty(s_status_layer);
+  } else {
+    s_active_powerup = powerup_type;
+    GRect paddle_frame = layer_get_frame(s_paddle_layer);
+    uint8_t new_size = PADDLE_WIDTH_STANDARD;
+    if (s_active_powerup == WIDE) {
+      new_size = PADDLE_WIDTH_WIDE;
+    } else if (s_active_powerup == SMALL) {
+      new_size = PADDLE_WIDTH_SMALL;
+    }
+    if (new_size != paddle_frame.size.w) {
+      paddle_frame.origin.x += (paddle_frame.size.w - new_size) / 2;
+      paddle_frame.size.w = new_size;
+      layer_set_frame(s_paddle_layer, paddle_frame);
+      layer_mark_dirty(s_paddle_layer);
+    }
+  }
+}
+
+static void ball_animation(uint16_t delay);
+
+static void move_paddle(ClickRecognizerRef recognizer) {
+  int16_t numClicks = click_number_of_clicks_counted(recognizer);
+  ButtonId buttonId = click_recognizer_get_button_id(recognizer);
+  int16_t dirSign = 1;
+  if (buttonId == BUTTON_ID_UP) {
+    dirSign = -1;
+  } else if (buttonId == BUTTON_ID_DOWN) {
+    dirSign = 1;
+  }
+
+  s_paddle_velocity = PADDLE_MAX_SPEED;
+  if (numClicks <= 2) {
+    s_paddle_velocity = PADDLE_MAX_SPEED/2;
+  }
+
+  s_paddle_velocity *= dirSign;
+  GRect frame = layer_get_frame(s_paddle_layer);
+  GRect main_frame = layer_get_frame(s_main_layer);
+
+  int16_t new_x = frame.origin.x + s_paddle_velocity;
+  if (new_x < 0) {
+    new_x = 0;
+  } else if (new_x + frame.size.w > main_frame.size.w) {
+    new_x = main_frame.size.w - frame.size.w;
+  }
+  frame.origin.x = new_x;
+  layer_set_frame(s_paddle_layer, frame);
+  layer_mark_dirty(s_paddle_layer);
+}
+
+static void move_aim(ClickRecognizerRef recognizer) {
+  int16_t numClicks = click_number_of_clicks_counted(recognizer);
+  ButtonId buttonId = click_recognizer_get_button_id(recognizer);
+  int16_t dirSign = 1;
+  if (buttonId == BUTTON_ID_UP) {
+    dirSign = -1;
+  } else if (buttonId == BUTTON_ID_DOWN) {
+    dirSign = 1;
+  }
+
+  int16_t aim_inc = 0;
+  if (numClicks % 4 == 1) {
+    aim_inc = HOLD_AIM_INC;
+  }
+
+  aim_inc *= dirSign;
+  int16_t *aim_angle = (int16_t *) layer_get_data(s_aim_layer);
+  int16_t new_angle = *aim_angle + aim_inc;
+  if (new_angle < -TRIG_MAX_ANGLE*1/8 && new_angle > -TRIG_MAX_ANGLE*3/8) {
+    *aim_angle = new_angle;
+  }
+  layer_mark_dirty(s_paddle_layer);
+}
+
+static void reset_paddle() {
+  layer_set_frame(s_paddle_layer, (GRect) {
+    .origin = {100, PADDLE_ORIGIN_Y},
+    .size = {PADDLE_WIDTH_STANDARD, 5}
+  });
+
+  layer_set_frame(s_ball_layer, (GRect) {
+    .origin = {113, PADDLE_ORIGIN_Y-5},
+    .size = {5, 5}
+  });
+
+  layer_set_frame(s_aim_layer, (GRect) {
+    .origin = {100, PADDLE_ORIGIN_Y-17},
+    .size = {PADDLE_WIDTH_STANDARD, 15}
+  });
+
+  int16_t *aim_angle = layer_get_data(s_aim_layer);
+  *aim_angle = -TRIG_MAX_ANGLE/4;
+  set_active_powerup(FIRST_BALL_HOLD);
+  s_is_holding_ball = true;
+  layer_set_hidden(s_aim_layer, false);
+
+  powerup_array_clear();
+  laser_fire_array_clear();
+}
+
+static void btn_dir_rep_click_handler(ClickRecognizerRef recognizer, void *context) {
+  if ((s_active_powerup == HOLD || s_active_powerup == FIRST_BALL_HOLD) && s_is_holding_ball) {
+    move_aim(recognizer);
+  } else {
+    move_paddle(recognizer);
+  }
+}
+
+static void select_rep_click_handler(ClickRecognizerRef recognizer, void *context) {
+  if ((s_active_powerup == HOLD || s_active_powerup == FIRST_BALL_HOLD) && s_is_holding_ball) {
+    layer_set_hidden(s_aim_layer, true);
+    int16_t *aim_angle = layer_get_data(s_aim_layer);
+    s_ball_dir_angle = *aim_angle;
+    s_is_holding_ball = false;
+    ball_animation(0);
+  } else if (s_active_powerup == LASER) {
+    shoot_laser();
+  }
+}
+
+static void click_config_provider(void *context) {
+  window_single_repeating_click_subscribe(BUTTON_ID_SELECT, 150, select_rep_click_handler);
+  window_single_repeating_click_subscribe(BUTTON_ID_UP, 30, btn_dir_rep_click_handler);
+  window_single_repeating_click_subscribe(BUTTON_ID_DOWN, 30, btn_dir_rep_click_handler);
+}
+
+
+
+static void hit_block(Layer *block_layer);
+static void scehdule_laser_animation(Layer *laser_fire_layer);
+
+static void laser_fire_find_end(Layer *laser_fire_layer, GRect *finish, Layer **block_layer, bool *hit) {
+  GRect laser_fire_frame = layer_get_frame(laser_fire_layer);
+  *finish = laser_fire_frame;
+  GRect block_frame;
+  uint8_t *block_data;
+  for (int i = 0; i < 200; i++) {
+    finish->origin.y--;
+    if (finish->origin.y <= 0) {
+      return;
+    }
+    for (int j = 0; j < s_num_blocks; j++) {
+      block_frame = layer_get_frame(s_block_layer_array[j]);
+      block_data = layer_get_data(s_block_layer_array[j]);
+      if (*block_data > 0 &&
+          finish->origin.y < block_frame.origin.y + block_frame.size.h &&
+          finish->origin.x < block_frame.origin.x + block_frame.size.w &&
+          finish->origin.x + finish->size.w > block_frame.origin.x) {
+        if (*hit) {
+          *block_layer = s_block_layer_array[j];
+        }
+        return;
+      }
+    }
+    if (*hit) {
+      *hit = false;
+      return;
+    }
+  }
+}
+
+static void laser_fire_anim_stopped_handler(Animation *animation, bool finished, void *context) {
+  property_animation_destroy((PropertyAnimation *)animation);
+
+  if (context != NULL && finished) {
+    Layer *laser_fire_layer = (Layer *)context;
+    GRect laser_fire_frame = layer_get_frame(laser_fire_layer);
+    GRect finish = laser_fire_frame;
+    Layer *block_layer = NULL;
+    bool hit = true;
+    laser_fire_find_end(laser_fire_layer, &finish, &block_layer, &hit);
+
+
+    if (hit) {
+      if (block_layer != NULL) {
+        hit_block(block_layer);
+      }
+      laser_fire_layer_clear(laser_fire_layer);
+    } else {
+      scehdule_laser_animation(laser_fire_layer);
+    }
+  }
+}
+
+static void scehdule_laser_animation(Layer *laser_fire_layer) {
+  GRect laser_fire_frame = layer_get_frame(laser_fire_layer);
+  GRect finish = laser_fire_frame;
+  Layer *block_layer;
+  bool hit = false;
+  laser_fire_find_end(laser_fire_layer, &finish, &block_layer, &hit);
+
+  int8_t laser_fire_index = -1;
+  for (int i = 0; i <= s_num_laser_fire; i++) {
+    if (laser_fire_layer == s_laser_fire_layer_array[i]) {
+      laser_fire_index = i;
+      break;
+    }
+  }
+  if (laser_fire_index == -1) {
+    return;
+  }
+
+  uint16_t anim_duration = LASER_FIRE_TIME_PER_DIST * (laser_fire_frame.origin.y - finish.origin.y);
+  PropertyAnimation *laser_animation = property_animation_create_layer_frame(laser_fire_layer, &laser_fire_frame, &finish);
+  s_laser_fire_animation_array[laser_fire_index] = laser_animation;
+  animation_set_duration((Animation*)laser_animation, anim_duration);
+  animation_set_delay((Animation*)laser_animation, 0);
+  animation_set_curve((Animation*)laser_animation, AnimationCurveLinear);
+  animation_set_handlers((Animation*)laser_animation, (AnimationHandlers) {
+    .stopped = laser_fire_anim_stopped_handler
+  }, laser_fire_layer);
+  animation_schedule((Animation*)laser_animation);
+}
+
+static void shoot_laser() {
+  // text_layer_set_text(s_text_layer, "drop powerup");
+  GRect paddle_frame = layer_get_frame(s_paddle_layer);
+  GRect frame = (GRect) {
+    .origin = {
+      s_laser_fire_frame.origin.x + paddle_frame.origin.x + paddle_frame.size.w/2,
+      s_laser_fire_frame.origin.y + paddle_frame.origin.y
+    },
+    .size = s_laser_fire_frame.size
+  };
+
+  Layer *laser_fire_layer = s_laser_fire_layer_array[s_num_laser_fire];
+
+  layer_set_frame(laser_fire_layer, frame);
+  layer_set_hidden(laser_fire_layer, false);
+  layer_mark_dirty(laser_fire_layer);
+
+  scehdule_laser_animation(laser_fire_layer);
+
+  s_num_laser_fire++;
+}
+
+
+
 static void powerup_anim_stopped_handler(Animation *animation, bool finished, void *context) {
   property_animation_destroy((PropertyAnimation *)animation);
 
-  if (context != NULL) {
+  if (context != NULL && finished) {
     Layer *powerup_layer = (Layer *)context;
     uint8_t *powerup_data = layer_get_data(powerup_layer);
     GRect powerup_frame = layer_get_frame(powerup_layer);
@@ -546,9 +749,10 @@ static void drop_powerup(PowerupTypeEnum powerup, Layer *block_layer) {
   GRect finish = frame;
   GRect paddle_frame = layer_get_frame(s_paddle_layer);
   finish.origin.y = paddle_frame.origin.y - frame.size.h;
+  uint16_t anim_duration = POWERUP_TIME_PER_DIST * (finish.origin.y - frame.origin.y);
   PropertyAnimation *powerup_animation = property_animation_create_layer_frame(powerup_layer, &frame, &finish);
   s_powerup_animation_array[s_num_powerup_drops] = powerup_animation;
-  animation_set_duration((Animation*)powerup_animation, 3000);
+  animation_set_duration((Animation*)powerup_animation, anim_duration);
   animation_set_delay((Animation*)powerup_animation, 0);
   animation_set_curve((Animation*)powerup_animation, AnimationCurveLinear);
   animation_set_handlers((Animation*)powerup_animation, (AnimationHandlers) {
@@ -557,25 +761,6 @@ static void drop_powerup(PowerupTypeEnum powerup, Layer *block_layer) {
   animation_schedule((Animation*)powerup_animation);
 
   s_num_powerup_drops++;
-}
-
-static void powerup_layers_create() {
-  Layer *powerup_layer;
-  uint8_t *layer_data;
-  GRect frame = (GRect) {
-    .origin = {0, 0},
-    .size = s_powerup_frame.size
-  };
-  for (int i = 0; i < MAX_NUM_POWERUP_DROPS; i++) {
-    powerup_layer = layer_create_with_data(frame, 1);   // TODO: this line causes issues on phone but not emulator, out of mem??
-    layer_data = layer_get_data(powerup_layer);
-    *layer_data = (uint8_t)NONE;
-    s_powerup_layer_array[i] = powerup_layer;
-    layer_set_update_proc(powerup_layer, powerup_layer_draw);
-    layer_add_child(s_main_layer, powerup_layer);
-    layer_set_hidden(powerup_layer, true);
-  }
-  s_num_powerup_drops = 0;
 }
 
 static void hit_block(Layer *block_layer) {
@@ -597,7 +782,8 @@ static void hit_block(Layer *block_layer) {
 
     uint16_t random_number = rand() % (NUM_ENUM_POWERUPS*POWERUP_FREQ);
     if (random_number < NUM_ENUM_POWERUPS && s_num_powerup_drops < MAX_NUM_POWERUP_DROPS) {
-      PowerupTypeEnum powerup = (PowerupTypeEnum)random_number;
+      // PowerupTypeEnum powerup = (PowerupTypeEnum)random_number;
+      PowerupTypeEnum powerup = LASER;
       drop_powerup(powerup, block_layer);
     }
   }
@@ -616,10 +802,6 @@ static BallReflectionTypeEnum ball_reflection(GRect *ball_rect, int16_t *new_bal
 
 
   for (i = 0; i < 200; i++) {
-    if (i > 100) {
-      APP_LOG(APP_LOG_LEVEL_DEBUG, "long path");
-    }
-
     if (i == 0) {
       next_rect.origin.x += ball_dir.x / ball_dir_abs_x;
       next_rect.origin.y += ball_dir.y / ball_dir_abs_y;
@@ -763,7 +945,7 @@ static void ball_animation(uint16_t delay) {
 
   // Schedule the next animation
   s_ball_animation = property_animation_create_layer_frame(s_ball_layer, &start, &finish);
-  animation_set_duration((Animation*)s_ball_animation, S_BALL_TIME_PER_DIST*rough_dist);
+  animation_set_duration((Animation*)s_ball_animation, BALL_TIME_PER_DIST*rough_dist);
   animation_set_delay((Animation*)s_ball_animation, delay);
   animation_set_curve((Animation*)s_ball_animation, AnimationCurveLinear);
   animation_set_handlers((Animation*)s_ball_animation, (AnimationHandlers) {
@@ -944,6 +1126,7 @@ static void game_window_load(Window *window) {
   layer_add_child(s_main_layer, s_aim_layer);
 
   powerup_layers_create();
+  laser_fire_layers_create();
 
   if (is_resume && load_resume_data_from_persist()) {
     s_is_holding_ball = false;
@@ -985,6 +1168,7 @@ static void game_window_unload(Window *window) {
 
   block_array_destroy();
   powerup_array_destroy();
+  laser_fire_array_destroy();
   layer_destroy(s_main_layer);
 }
 
