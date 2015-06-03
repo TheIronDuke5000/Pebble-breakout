@@ -114,6 +114,8 @@ static uint8_t s_num_laser_fire = 0;
 #define SCORE_POWERUP_CATCH 10
 #define SCORE_LEVEL_COMPLETE 100
 
+static GSize s_block_size = {16, 8};
+
 #define s_powerup_frame  (GRect) { .origin = {(-48+16-6)/2, 0}, .size = {48, 12} }
 
 #define s_powerup_text_frame (GRect) { .origin = {0, 0}, .size = {48, 8} }
@@ -198,7 +200,30 @@ static const char *s_powerup_names[] = {
     GColorBlackARGB8,
     GColorBlackARGB8
   };
-  #define s_powerup_colors(i)  (GColor8) { .argb = s_powerup_colors_ARGB8[i]}
+
+  static const uint8_t s_block_colors_ARGB8[] = {
+    GColorRedARGB8,
+    GColorOrangeARGB8,
+    GColorYellowARGB8,
+    GColorLimerickARGB8,
+    GColorGreenARGB8,
+    GColorIslamicGreenARGB8,
+    GColorCyanARGB8,
+    GColorVividCeruleanARGB8,
+    GColorDukeBlueARGB8,
+    GColorIndigoARGB8,
+    GColorFashionMagentaARGB8,
+    GColorLightGrayARGB8,
+    GColorLightGrayARGB8,
+    GColorLightGrayARGB8,
+    GColorLightGrayARGB8,
+    GColorLightGrayARGB8
+  };
+
+  #define s_powerup_colors(i) (GColor8) { .argb = s_powerup_colors_ARGB8[i] }
+  #define s_block_colors(i) (GColor8) { .argb = s_block_colors_ARGB8[i] }
+
+  
 #endif
 
 #define NUM_ENUM_POWERUPS 7    // number of powerups that can drop from block kills
@@ -238,27 +263,96 @@ static int16_t reflect_angle_Y(int16_t angle) {
   return angle;
 }
 
+#ifdef PBL_COLOR
+static GColor8 block_layer_get_color(Layer *block_layer) {
+  uint8_t *block_data = layer_get_data(block_layer);
+  uint8_t color_index = ((*block_data) >> 4) & 0x0f;
+  return s_block_colors(color_index);
+}
+
+static GColor8 color_get_lighter(GColor8 color) {
+  for (uint8_t i = 0; i < 3; i++) {
+    uint8_t j = 0;
+    while (((color.argb >> (2*i)) & 0b11) < 0b11 && j < 2) {
+      color.argb += (0b01 << (2*i));
+      j++;
+    }
+  }
+  return color;
+}
+
+static GColor8 color_get_darker(GColor8 color) {
+  for (uint8_t i = 0; i < 3; i++) {
+    uint8_t j = 0;
+    while (((color.argb >> (2*i)) & 0b11) > 0b01 && j < 2) {
+      color.argb -= (0b01 << (2*i));
+      j++;
+    }
+  }
+  return color;
+}
+#endif
+
+// 0x0f == 15 means infinite
+static uint8_t block_layer_get_num_hits_remaining(Layer *block_layer) {
+  uint8_t *block_data = layer_get_data(block_layer);
+  uint8_t num_hits = (*block_data) & 0x0f;
+  return num_hits;
+}
+
 static void block_layer_draw(Layer *layer, GContext *ctx) {
-  uint8_t *block_data = (uint8_t *) layer_get_data(layer);
+  uint8_t num_hits = block_layer_get_num_hits_remaining(layer);
   GRect bounds = layer_get_bounds(layer);
   // GRect inner_rect
 
+  if (num_hits > 0) {
+    #ifndef PBL_COLOR
+      graphics_context_set_fill_color(ctx, GColorBlack);
+      graphics_fill_rect(ctx, bounds, 0, GCornersAll);
+      graphics_context_set_fill_color(ctx, GColorWhite);
+      bounds.origin.x += 1;
+      bounds.origin.y += 1;
+      bounds.size.w -= 2;
+      bounds.size.h -= 2;
+      graphics_fill_rect(ctx, bounds, 0, GCornersAll);
+      graphics_context_set_fill_color(ctx, GColorBlack);
+      bounds.origin.x += 1;
+      bounds.origin.y += 1;
+      bounds.size.w -= 2;
+      bounds.size.h -= 2;
+      graphics_fill_rect(ctx, bounds, 0, GCornersAll);
+    #else
+      GColor8 block_color = block_layer_get_color(layer);
 
-  if (*block_data > 0) {
-    graphics_context_set_fill_color(ctx, GColorBlack);
-    graphics_fill_rect(ctx, bounds, 0, GCornersAll);
-    graphics_context_set_fill_color(ctx, GColorWhite);
-    bounds.origin.x += 1;
-    bounds.origin.y += 1;
-    bounds.size.w -= 2;
-    bounds.size.h -= 2;
-    graphics_fill_rect(ctx, bounds, 0, GCornersAll);
-    graphics_context_set_fill_color(ctx, GColorBlack);
-    bounds.origin.x += 1;
-    bounds.origin.y += 1;
-    bounds.size.w -= 2;
-    bounds.size.h -= 2;
-    graphics_fill_rect(ctx, bounds, 0, GCornersAll);
+      GRect inside_bounds = bounds;
+      uint8_t depth = (num_hits << 1);
+      inside_bounds.origin.x += (depth << 0);
+      inside_bounds.origin.y += depth;
+      inside_bounds.size.w -= (depth << 1);
+      inside_bounds.size.h -= (depth << 1);
+
+      GPathInfo block_shadow_path_info = (GPathInfo) {
+        .num_points = 5,
+        .points = (GPoint []) {
+          {0, 0},
+          {0, s_block_size.h},
+          {s_block_size.h/2, s_block_size.h/2},
+          {s_block_size.w - s_block_size.h/2, s_block_size.h/2},
+          {s_block_size.w, 0}
+        }
+      };
+
+      graphics_context_set_fill_color(ctx, color_get_darker(block_color));
+      graphics_fill_rect(ctx, bounds, 0, GCornersAll);
+
+      GPath *shadow_path = gpath_create(&block_shadow_path_info);
+      graphics_context_set_fill_color(ctx, color_get_lighter(block_color));
+      gpath_move_to(shadow_path, (GPoint) {bounds.origin.x-1, bounds.origin.y});
+      gpath_draw_filled(ctx, shadow_path);
+
+      graphics_context_set_fill_color(ctx, block_color);
+      graphics_fill_rect(ctx, inside_bounds, 0, GCornersAll);
+    #endif
   } else {
     layer_set_hidden(layer, true);
   }
@@ -1045,7 +1139,7 @@ static void load_map_from_buffer(uint8_t *buffer, uint8_t buffer_len) {
 
   s_block_layer_array = (Layer **)malloc(s_num_blocks*(sizeof(Layer *)));
 
-  GRect block_rect = (GRect) { .origin = {0, 0}, .size = {16, 8}};
+  GRect block_rect = (GRect) { .origin = {0, 0}, .size = s_block_size};
 
   // create blocks
   int16_t i;
@@ -1055,6 +1149,7 @@ static void load_map_from_buffer(uint8_t *buffer, uint8_t buffer_len) {
     Layer *new_block_layer = layer_create_with_data(block_rect, 1);
     uint8_t *layer_data = (uint8_t *)layer_get_data(new_block_layer);
     *layer_data = buffer[i*3];
+    layer_set_clips(new_block_layer, true);
     layer_set_update_proc(new_block_layer, block_layer_draw);
     layer_add_child(s_main_layer, new_block_layer);
     s_block_layer_array[i] = new_block_layer;
