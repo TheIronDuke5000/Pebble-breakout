@@ -96,7 +96,7 @@ static int16_t s_paddle_velocity;
 static Layer **s_block_layer_array;
 static uint16_t s_num_blocks = 0;
 static Layer *s_aim_layer;
-static bool is_resume;
+static bool s_is_resume;
 static Layer *s_powerup_layer_array[MAX_NUM_POWERUP_DROPS];
 static PropertyAnimation *s_powerup_animation_array[MAX_NUM_POWERUP_DROPS];
 static uint8_t s_num_powerup_drops = 0;
@@ -110,8 +110,9 @@ static uint8_t s_num_laser_fire = 0;
 
 #define STATUS_LAYER_HEIGHT 16
 #define SCORE_MAX_WIDTH 5
-#define SCORE_BLOCK_KILL 10
-#define SCORE_POWERUP_CATCH 100
+#define SCORE_BLOCK_KILL 1
+#define SCORE_POWERUP_CATCH 10
+#define SCORE_LEVEL_COMPLETE 100
 
 #define s_powerup_frame  (GRect) { .origin = {(-48+16-6)/2, 0}, .size = {48, 12} }
 
@@ -135,6 +136,19 @@ static uint8_t s_num_laser_fire = 0;
 #define PADDLE_WIDTH_SMALL 16
 #define PADDLE_WIDTH_WIDE 60
 
+uint32_t s_map_resource_array[] = {
+  RESOURCE_ID_MAP1,
+  RESOURCE_ID_MAP2
+  // RESOURCE_ID_MAP3,
+  // RESOURCE_ID_MAP4,
+  // RESOURCE_ID_MAP5,
+  // RESOURCE_ID_MAP6,
+  // RESOURCE_ID_MAP7,
+  // RESOURCE_ID_MAP8,
+  // RESOURCE_ID_MAP9,
+  // RESOURCE_ID_MAP10
+};
+
 typedef enum {
   WALL_VERT,
   WALL_HORZ,
@@ -156,8 +170,8 @@ typedef enum {
   BOMB = 5,
   PLASMA = 6,
 
-  FIRST_BALL_HOLD,
-  NONE
+  FIRST_BALL_HOLD = 7,
+  NONE = 8
 } PowerupTypeEnum;
 
 static const char *s_powerup_names[] = {
@@ -274,7 +288,7 @@ static void paddle_layer_draw(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
 
   #ifdef PBL_COLOR
-    GColor8 paddle_color = s_powerup_colors(s_active_powerup);
+    GColor8 paddle_color = s_powerup_colors((uint8_t)s_active_powerup);
   #else
     GColor paddle_color = GColorBlack;
   #endif
@@ -322,7 +336,7 @@ static void status_layer_draw(Layer *layer, GContext *ctx) {
   graphics_draw_text(ctx, buffer, s_arcade_font_8,
     text_bounds, GTextOverflowModeWordWrap, GTextAlignmentLeft, NULL);
 
-  snprintf(buffer, buffer_len, "LVL%d", s_level);
+  snprintf(buffer, buffer_len, "LVL%d", s_level + 1);
   graphics_draw_text(ctx, buffer, s_arcade_font_8,
     text_bounds, GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
 
@@ -470,26 +484,29 @@ static void laser_fire_layers_create() {
 }
 
 static void shoot_laser();
+static void reset_paddle();
 
 static void set_active_powerup(PowerupTypeEnum powerup_type) {
   if (powerup_type == LIFE) {
     s_num_lives++;
     layer_mark_dirty(s_status_layer);
-  } else {
-    s_active_powerup = powerup_type;
-    GRect paddle_frame = layer_get_frame(s_paddle_layer);
-    uint8_t new_size = PADDLE_WIDTH_STANDARD;
-    if (s_active_powerup == WIDE) {
-      new_size = PADDLE_WIDTH_WIDE;
-    } else if (s_active_powerup == SMALL) {
-      new_size = PADDLE_WIDTH_SMALL;
-    }
-    if (new_size != paddle_frame.size.w) {
-      paddle_frame.origin.x += (paddle_frame.size.w - new_size) / 2;
-      paddle_frame.size.w = new_size;
-      layer_set_frame(s_paddle_layer, paddle_frame);
-      layer_mark_dirty(s_paddle_layer);
-    }
+  } else if (powerup_type == FIRST_BALL_HOLD) {
+    s_is_holding_ball = true;
+  }
+
+  s_active_powerup = powerup_type;
+  GRect paddle_frame = layer_get_frame(s_paddle_layer);
+  uint8_t new_size = PADDLE_WIDTH_STANDARD;
+  if (s_active_powerup == WIDE) {
+    new_size = PADDLE_WIDTH_WIDE;
+  } else if (s_active_powerup == SMALL) {
+    new_size = PADDLE_WIDTH_SMALL;
+  }
+  if (new_size != paddle_frame.size.w) {
+    paddle_frame.origin.x += (paddle_frame.size.w - new_size) / 2;
+    paddle_frame.size.w = new_size;
+    layer_set_frame(s_paddle_layer, paddle_frame);
+    layer_mark_dirty(s_paddle_layer);
   }
 }
 
@@ -550,27 +567,30 @@ static void move_aim(ClickRecognizerRef recognizer) {
 }
 
 static void reset_paddle() {
+  set_active_powerup(FIRST_BALL_HOLD);
+  animation_unschedule((Animation *) s_ball_animation);
+
+  GRect main_frame = layer_get_frame(s_main_layer);
+  uint8_t paddle_origin_x = main_frame.size.w/2 - PADDLE_WIDTH_STANDARD/2;
+
   layer_set_frame(s_paddle_layer, (GRect) {
-    .origin = {100, PADDLE_ORIGIN_Y},
+    .origin = {paddle_origin_x, PADDLE_ORIGIN_Y},
     .size = {PADDLE_WIDTH_STANDARD, 5}
   });
 
   layer_set_frame(s_ball_layer, (GRect) {
-    .origin = {113, PADDLE_ORIGIN_Y-5},
+    .origin = {paddle_origin_x + 13, PADDLE_ORIGIN_Y-5},
     .size = {5, 5}
   });
 
   layer_set_frame(s_aim_layer, (GRect) {
-    .origin = {100, PADDLE_ORIGIN_Y-17},
+    .origin = {paddle_origin_x, PADDLE_ORIGIN_Y-17},
     .size = {PADDLE_WIDTH_STANDARD, 15}
   });
 
   int16_t *aim_angle = layer_get_data(s_aim_layer);
   *aim_angle = -TRIG_MAX_ANGLE/4;
-  set_active_powerup(FIRST_BALL_HOLD);
-  s_is_holding_ball = true;
   layer_set_hidden(s_aim_layer, false);
-
   powerup_array_clear();
   laser_fire_array_clear();
 }
@@ -590,6 +610,9 @@ static void select_rep_click_handler(ClickRecognizerRef recognizer, void *contex
     s_ball_dir_angle = *aim_angle;
     s_is_holding_ball = false;
     ball_animation(0);
+    if (s_active_powerup == FIRST_BALL_HOLD) {
+      set_active_powerup(NONE);
+    }
   } else if (s_active_powerup == LASER) {
     shoot_laser();
   }
@@ -601,10 +624,9 @@ static void click_config_provider(void *context) {
   window_single_repeating_click_subscribe(BUTTON_ID_DOWN, 30, btn_dir_rep_click_handler);
 }
 
-
-
 static void hit_block(Layer *block_layer, PowerupTypeEnum hit_by_powerup);
 static void scehdule_laser_animation(Layer *laser_fire_layer);
+static void load_map_from_resource(uint8_t level_id);
 
 static void laser_fire_find_end(Layer *laser_fire_layer, GRect *finish, Layer **block_layer, bool *hit) {
   GRect laser_fire_frame = layer_get_frame(laser_fire_layer);
@@ -711,8 +733,6 @@ static void shoot_laser() {
   s_num_laser_fire++;
 }
 
-
-
 static void powerup_anim_stopped_handler(Animation *animation, bool finished, void *context) {
   property_animation_destroy((PropertyAnimation *)animation);
 
@@ -771,6 +791,26 @@ static void drop_powerup(PowerupTypeEnum powerup, Layer *block_layer) {
   s_num_powerup_drops++;
 }
 
+static bool check_finished_level() {
+  uint8_t *block_data;
+  bool finished_level = true;
+  for (int i = 0; i < s_num_blocks; i++) {
+    block_data = layer_get_data(s_block_layer_array[i]);
+    if (*block_data != 0 && *block_data != 0xff) {
+      finished_level = false;
+    }
+  }
+
+  if (finished_level) {
+    s_level++;
+    s_score += SCORE_LEVEL_COMPLETE;
+    layer_mark_dirty(s_status_layer);
+    load_map_from_resource(s_level);
+    reset_paddle();
+  }
+  return finished_level;
+}
+
 static void hit_block(Layer *block_layer, PowerupTypeEnum hit_by_powerup) {
   uint8_t *block_data = layer_get_data(block_layer);
   if (*block_data == 0xff) {
@@ -792,8 +832,7 @@ static void hit_block(Layer *block_layer, PowerupTypeEnum hit_by_powerup) {
 
     uint16_t random_number = rand() % (NUM_ENUM_POWERUPS*POWERUP_FREQ);
     if (random_number < NUM_ENUM_POWERUPS && s_num_powerup_drops < MAX_NUM_POWERUP_DROPS) {
-      // PowerupTypeEnum powerup = (PowerupTypeEnum)random_number;
-      PowerupTypeEnum powerup = PLASMA;
+      PowerupTypeEnum powerup = (PowerupTypeEnum)random_number;
       drop_powerup(powerup, block_layer);
     }
 
@@ -819,7 +858,10 @@ static void hit_block(Layer *block_layer, PowerupTypeEnum hit_by_powerup) {
         }
       }
     }
-    // TODO: check if level is finished
+    
+    if (hit_by_powerup == LASER) {
+      check_finished_level();
+    }
   }
 }
 
@@ -936,8 +978,10 @@ static BallReflectionTypeEnum ball_reflection(GRect *ball_rect, int16_t *new_bal
 static void ball_anim_stopped_handler(Animation *animation, bool finished, void *context) {
   property_animation_destroy(s_ball_animation);
 
-  // Schedule the next one, unless the app is exiting
-  if (finished) {
+  if (!finished || s_active_powerup == FIRST_BALL_HOLD) {
+    // dont restart the animation
+    psleep(100);
+  } else {
     int16_t new_ball_dir_angle;
     GRect ball_rect_changing = layer_get_frame(s_ball_layer);
     bool hit = true;
@@ -958,10 +1002,14 @@ static void ball_anim_stopped_handler(Animation *animation, bool finished, void 
       layer_set_hidden(s_aim_layer, false);
       s_is_holding_ball = true;
     } else {
+      bool finished_level = false;
       if (hit) {
+        finished_level = check_finished_level();
         s_ball_dir_angle = new_ball_dir_angle;
       }
-      ball_animation(0);
+      if (!finished_level) {
+        ball_animation(0);
+      }
     }
   }
 }
@@ -1013,11 +1061,11 @@ static void load_map_from_buffer(uint8_t *buffer, uint8_t buffer_len) {
   }
 }
 
-static void load_map_from_resource() {
+static void load_map_from_resource(uint8_t level_id) {
   block_array_destroy();
 
   // Get resource and size
-  ResHandle handle = resource_get_handle(RESOURCE_ID_MAP1);
+  ResHandle handle = resource_get_handle(s_map_resource_array[level_id]);
   uint8_t res_size = (uint8_t)resource_size(handle);
   uint8_t *buffer = (uint8_t*)malloc(res_size);
   resource_load(handle, buffer, res_size);
@@ -1057,6 +1105,11 @@ static bool load_resume_data_from_persist() {
 
     if (persist_exists(P_POWERUP_KEY)) {
       set_active_powerup((PowerupTypeEnum) persist_read_int(P_POWERUP_KEY));
+      if (s_active_powerup == FIRST_BALL_HOLD) {
+        reset_paddle();
+      } else {
+        layer_set_hidden(s_aim_layer, true);
+      }
     }
 
     if (persist_exists(P_LEVEL_KEY)) {
@@ -1072,6 +1125,10 @@ static bool load_resume_data_from_persist() {
     }
 
     layer_mark_dirty(s_status_layer);
+
+    if (s_active_powerup != FIRST_BALL_HOLD) {
+      ball_animation(1000);
+    }
 
     return true;
   } else {
@@ -1166,16 +1223,14 @@ static void game_window_load(Window *window) {
   powerup_layers_create();
   laser_fire_layers_create();
 
-  if (is_resume && load_resume_data_from_persist()) {
-    s_is_holding_ball = false;
-    layer_set_hidden(s_aim_layer, true);
-    ball_animation(1000);
-  } else {
-    load_map_from_resource();
+  if (s_is_resume && load_resume_data_from_persist()) {
 
+  } else {
+    load_map_from_resource(0);
+    set_active_powerup(FIRST_BALL_HOLD);
     reset_paddle();
 
-    s_level = 1;
+    s_level = 0;
     s_num_lives = 3;
     s_score = 0;
   }
@@ -1211,13 +1266,13 @@ static void game_window_unload(Window *window) {
 }
 
 static void menu_new_game_callback(int index, void *context) {
-  is_resume = false;
+  s_is_resume = false;
   window_stack_push(s_main_window, true);
 }
 
 static void menu_resume_callback(int index, void *context) {
   if (persist_exists(P_BLOCKS_DATA_KEY)) {
-    is_resume = true;
+    s_is_resume = true;
     window_stack_push(s_main_window, true);
   }
 }
