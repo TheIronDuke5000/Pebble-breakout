@@ -332,7 +332,11 @@ static void block_layer_draw(Layer *layer, GContext *ctx) {
 
   if (num_hits > 0) {
     GRect inside_bounds = bounds;
-    uint8_t depth = num_hits - 1;
+    #ifdef PBL_COLOR
+      uint8_t depth = num_hits - 1;
+    #else
+      uint8_t depth = num_hits;
+    #endif
     inside_bounds.origin.x += depth;
     inside_bounds.origin.y += depth;
     inside_bounds.size.w -= (depth << 1);
@@ -462,14 +466,6 @@ static void laser_fire_layer_draw(Layer *layer, GContext *ctx) {
   graphics_fill_rect(ctx, bounds, bounds.size.h, GCornersAll);
 }
 
-static void block_shadow_path_create() {
-  s_block_shadow_path = gpath_create(&s_block_shadow_path_info);
-}
-
-static void block_shadow_path_destroy() {
-  gpath_destroy(s_block_shadow_path);
-}
-
 static void block_array_destroy() {
   for (int i = 0; i < s_num_blocks; i++) {
     layer_destroy(s_block_layer_array[i]);
@@ -484,9 +480,9 @@ static void block_array_destroy() {
 static void powerup_array_destroy() {
   for (int i = 0; i < s_num_powerup_drops; i++) {
     layer_destroy(s_powerup_layer_array[i]);
-    if (s_powerup_animation_array[i] != NULL) {
-      property_animation_destroy((PropertyAnimation *)s_powerup_animation_array[i]);
-    }
+    // if (s_powerup_animation_array[i] != NULL) {
+    //   property_animation_destroy(s_powerup_animation_array[i]);
+    // }
   }
   s_num_powerup_drops = 0;
 }
@@ -543,9 +539,9 @@ static void powerup_layers_create() {
 static void laser_fire_array_destroy() {
   for (int i = 0; i < s_num_laser_fire; i++) {
     layer_destroy(s_laser_fire_layer_array[i]);
-    if (s_laser_fire_animation_array[i] != NULL) {
-      property_animation_destroy((PropertyAnimation *)s_laser_fire_animation_array[i]);
-    }
+    // if (s_laser_fire_animation_array[i] != NULL) {
+    //   property_animation_destroy(s_laser_fire_animation_array[i]);
+    // }
   }
   s_num_laser_fire = 0;
 }
@@ -752,7 +748,6 @@ static void laser_fire_find_end(Layer *laser_fire_layer, GRect *finish, Layer **
   GRect laser_fire_frame = layer_get_frame(laser_fire_layer);
   *finish = laser_fire_frame;
   GRect block_frame;
-  uint8_t *block_data;
   for (int i = 0; i < 200; i++) {
     finish->origin.y--;
     if (finish->origin.y <= 0) {
@@ -760,8 +755,7 @@ static void laser_fire_find_end(Layer *laser_fire_layer, GRect *finish, Layer **
     }
     for (int j = 0; j < s_num_blocks; j++) {
       block_frame = layer_get_frame(s_block_layer_array[j]);
-      block_data = layer_get_data(s_block_layer_array[j]);
-      if (*block_data > 0 &&
+      if (block_layer_get_num_hits_remaining(s_block_layer_array[j]) > 0 &&
           finish->origin.y < block_frame.origin.y + block_frame.size.h &&
           finish->origin.x < block_frame.origin.x + block_frame.size.w &&
           finish->origin.x + finish->size.w > block_frame.origin.x) {
@@ -1344,7 +1338,8 @@ static void game_window_load(Window *window) {
 
   powerup_layers_create();
   laser_fire_layers_create();
-  block_shadow_path_create();
+
+  s_block_shadow_path = gpath_create(&s_block_shadow_path_info);
 
   APP_LOG(APP_LOG_LEVEL_DEBUG, "game window load");
 
@@ -1384,7 +1379,7 @@ static void game_window_unload(Window *window) {
   layer_destroy(s_aim_layer);
   layer_destroy(s_status_layer);
 
-  block_shadow_path_destroy();
+  gpath_destroy(s_block_shadow_path);
 
   block_array_destroy();
   powerup_array_destroy();
