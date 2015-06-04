@@ -906,11 +906,11 @@ static void drop_powerup(PowerupTypeEnum powerup, Layer *block_layer) {
 }
 
 static bool check_finished_level() {
-  uint8_t *block_data;
+  uint8_t num_hits;
   bool finished_level = true;
   for (int i = 0; i < s_num_blocks; i++) {
-    block_data = layer_get_data(s_block_layer_array[i]);
-    if (*block_data != 0 && *block_data != 0xff) {
+    num_hits = block_layer_get_num_hits_remaining(s_block_layer_array[i]);
+    if (num_hits > 0 && num_hits < 0xf) {
       finished_level = false;
     }
   }
