@@ -79,6 +79,13 @@
 
 #define BOMB_BLAST_RADIUS 20
 
+// #define DEBUG
+
+#ifdef DEBUG
+static TextLayer *s_text_layer;
+static char s_text_layer_text[20];
+#endif
+
 static Window *s_menu_window;
 static SimpleMenuLayer *s_menu_layer;
 static Layer *s_status_layer;
@@ -86,8 +93,6 @@ static SimpleMenuSection s_menu_section;
 static SimpleMenuItem s_menu_items[2];
 static Window *s_main_window;
 static Layer *s_main_layer;
-static TextLayer *s_text_layer;
-static char s_text_layer_text[20];
 static Layer *s_ball_layer;
 static int16_t s_ball_dir_angle;
 static PropertyAnimation *s_ball_animation;
@@ -204,39 +209,44 @@ static const char *s_powerup_names[] = {
 };
 
 #ifdef PBL_COLOR
-  static const uint8_t s_powerup_colors_ARGB8[] = {
-    GColorBlueARGB8,
-    GColorRedARGB8,
-    GColorChromeYellowARGB8,
-    GColorWindsorTanARGB8,
-    GColorGreenARGB8,
-    GColorCyanARGB8,
-    GColorFashionMagentaARGB8,
-    GColorBlackARGB8,
-    GColorBlackARGB8
-  };
 
-  static const uint8_t s_block_colors_ARGB8[] = {
-    GColorRedARGB8,
-    GColorOrangeARGB8,
-    GColorYellowARGB8,
-    GColorLimerickARGB8,
-    GColorGreenARGB8,
-    GColorIslamicGreenARGB8,
-    GColorCyanARGB8,
-    GColorVividCeruleanARGB8,
-    GColorDukeBlueARGB8,
-    GColorIndigoARGB8,
-    GColorFashionMagentaARGB8,
-    GColorLightGrayARGB8,
-    GColorLightGrayARGB8,
-    GColorLightGrayARGB8,
-    GColorLightGrayARGB8,
-    GColorLightGrayARGB8
-  };
+static const uint8_t s_powerup_colors_ARGB8[] = {
+  GColorBlueARGB8,
+  GColorRedARGB8,
+  GColorChromeYellowARGB8,
+  GColorWindsorTanARGB8,
+  GColorGreenARGB8,
+  GColorCyanARGB8,
+  GColorFashionMagentaARGB8,
+  GColorBlackARGB8,
+  GColorBlackARGB8
+};
 
-  #define s_powerup_colors(i) (GColor8) { .argb = s_powerup_colors_ARGB8[i] }
-  #define s_block_colors(i) (GColor8) { .argb = s_block_colors_ARGB8[i] }
+
+// invincible blocks are 0xff 
+// colour is the most significant nibble
+// number of hits to kill is the least significant nibble
+static const uint8_t s_block_colors_ARGB8[] = {
+  GColorRedARGB8,                 // 0x0
+  GColorOrangeARGB8,              // 0x1
+  GColorYellowARGB8,              // 0x2
+  GColorLimerickARGB8,            // 0x3
+  GColorGreenARGB8,               // 0x4
+  GColorIslamicGreenARGB8,        // 0x5
+  GColorCyanARGB8,                // 0x6
+  GColorVividCeruleanARGB8,       // 0x7
+  GColorDukeBlueARGB8,            // 0x8
+  GColorIndigoARGB8,              // 0x9
+  GColorFashionMagentaARGB8,      // 0xa
+  GColorLightGrayARGB8,           // 0xb
+  GColorLightGrayARGB8,           // 0xc
+  GColorLightGrayARGB8,           // 0xd
+  GColorLightGrayARGB8,           // 0xe
+  GColorLightGrayARGB8            // 0xf
+};
+
+#define s_powerup_colors(i) (GColor8) { .argb = s_powerup_colors_ARGB8[i] }
+#define s_block_colors(i) (GColor8) { .argb = s_block_colors_ARGB8[i] }
 
   
 #endif
@@ -332,35 +342,35 @@ static void block_layer_draw(Layer *layer, GContext *ctx) {
 
   if (num_hits > 0) {
     GRect inside_bounds = bounds;
-    #ifdef PBL_COLOR
-      uint8_t depth = num_hits - 1;
-    #else
-      uint8_t depth = num_hits;
-    #endif
+#ifdef PBL_COLOR
+    uint8_t depth = num_hits - 1;
+#else
+    uint8_t depth = num_hits;
+#endif
     inside_bounds.origin.x += depth;
     inside_bounds.origin.y += depth;
     inside_bounds.size.w -= (depth << 1);
     inside_bounds.size.h -= (depth << 1);
 
-    #ifdef PBL_COLOR
-      GColor8 block_color = block_layer_get_color(layer);
+#ifdef PBL_COLOR
+    GColor8 block_color = block_layer_get_color(layer);
 
-      graphics_context_set_fill_color(ctx, color_get_darker(block_color));
-      graphics_fill_rect(ctx, bounds, 0, GCornersAll);
+    graphics_context_set_fill_color(ctx, color_get_darker(block_color));
+    graphics_fill_rect(ctx, bounds, 0, GCornersAll);
 
-      graphics_context_set_fill_color(ctx, color_get_lighter(block_color));
-      gpath_move_to(s_block_shadow_path, (GPoint) {bounds.origin.x-1, bounds.origin.y});
-      gpath_draw_filled(ctx, s_block_shadow_path);
+    graphics_context_set_fill_color(ctx, color_get_lighter(block_color));
+    gpath_move_to(s_block_shadow_path, (GPoint) {bounds.origin.x-1, bounds.origin.y});
+    gpath_draw_filled(ctx, s_block_shadow_path);
 
-      graphics_context_set_fill_color(ctx, block_color);
-      graphics_fill_rect(ctx, inside_bounds, 0, GCornersAll);
-    #else
-      graphics_context_set_fill_color(ctx, GColorBlack);
-      graphics_fill_rect(ctx, bounds, 0, GCornersAll);
+    graphics_context_set_fill_color(ctx, block_color);
+    graphics_fill_rect(ctx, inside_bounds, 0, GCornersAll);
+#else
+    graphics_context_set_fill_color(ctx, GColorBlack);
+    graphics_fill_rect(ctx, bounds, 0, GCornersAll);
 
-      graphics_context_set_fill_color(ctx, GColorWhite);
-      graphics_fill_rect(ctx, inside_bounds, 0, GCornersAll);
-    #endif
+    graphics_context_set_fill_color(ctx, GColorWhite);
+    graphics_fill_rect(ctx, inside_bounds, 0, GCornersAll);
+#endif
   } else {
     layer_set_hidden(layer, true);
   }
@@ -389,11 +399,11 @@ static void aim_layer_draw(Layer *layer, GContext *ctx) {
 static void paddle_layer_draw(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
 
-  #ifdef PBL_COLOR
-    GColor8 paddle_color = s_powerup_colors((uint8_t)s_active_powerup);
-  #else
-    GColor paddle_color = GColorBlack;
-  #endif
+#ifdef PBL_COLOR
+  GColor8 paddle_color = s_powerup_colors((uint8_t)s_active_powerup);
+#else
+  GColor paddle_color = GColorBlack;
+#endif
 
   graphics_context_set_fill_color(ctx, paddle_color);
   graphics_fill_rect(ctx, bounds, bounds.size.h/2, GCornersAll);
@@ -403,11 +413,11 @@ static void powerup_layer_draw(Layer *layer, GContext *ctx) {
   uint8_t *layer_data = layer_get_data(layer);
   GRect bounds = layer_get_bounds(layer);
 
-  #ifdef PBL_COLOR
-    GColor8 powerup_color = s_powerup_colors(*layer_data);
-  #else
-    GColor powerup_color = GColorBlack;
-  #endif
+#ifdef PBL_COLOR
+  GColor8 powerup_color = s_powerup_colors(*layer_data);
+#else
+  GColor powerup_color = GColorBlack;
+#endif
 
   graphics_context_set_fill_color(ctx, powerup_color);
   graphics_context_set_text_color(ctx, powerup_color);
@@ -456,11 +466,11 @@ static void status_layer_draw(Layer *layer, GContext *ctx) {
 static void laser_fire_layer_draw(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
 
-  #ifdef PBL_COLOR
-    GColor8 fire_color = GColorRed;
-  #else
-    GColor fire_color = GColorBlack;
-  #endif
+#ifdef PBL_COLOR
+  GColor8 fire_color = GColorRed;
+#else
+  GColor fire_color = GColorBlack;
+#endif
 
   graphics_context_set_fill_color(ctx, fire_color);
   graphics_fill_rect(ctx, bounds, bounds.size.h, GCornersAll);
@@ -826,7 +836,9 @@ static void scehdule_laser_animation(Layer *laser_fire_layer) {
 }
 
 static void shoot_laser() {
+#ifdef DEBUG
   // text_layer_set_text(s_text_layer, "drop powerup");
+#endif
   GRect paddle_frame = layer_get_frame(s_paddle_layer);
   GRect frame = (GRect) {
     .origin = {
@@ -871,7 +883,9 @@ static void powerup_anim_stopped_handler(Animation *animation, bool finished, vo
 }
 
 static void drop_powerup(PowerupTypeEnum powerup, Layer *block_layer) {
-  // text_layer_set_text(s_text_layer, "drop powerup");
+#ifdef DEBUG
+// text_layer_set_text(s_text_layer, "drop powerup");
+#endif
   GRect frame = layer_get_frame(block_layer);
 
   frame.origin.x += s_powerup_frame.origin.x;
@@ -881,7 +895,6 @@ static void drop_powerup(PowerupTypeEnum powerup, Layer *block_layer) {
   Layer *powerup_layer = s_powerup_layer_array[s_num_powerup_drops];
   uint8_t *layer_data = layer_get_data(powerup_layer);
   *layer_data = (uint8_t)powerup;
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "powerup drop int %d", *layer_data);
 
   layer_set_frame(powerup_layer, frame);
   layer_set_hidden(powerup_layer, false);
@@ -1003,10 +1016,6 @@ static BallReflectionTypeEnum ball_reflection(GRect *ball_rect, int16_t *new_bal
       next_rect.origin.y += ball_dir.y / ball_dir_abs_y;
     }
 
-    // APP_LOG(APP_LOG_LEVEL_DEBUG, "ball orig y:%d, next orig y:%d, paddle orig y:%d",
-    //   ball_rect->origin.y, next_rect.origin.y, paddle_frame.origin.y);
-
-
     if (next_rect.origin.x < 0 ||
         next_rect.origin.x + next_rect.size.w > arena_bounds.size.w) {
       if (*hit) {
@@ -1100,7 +1109,9 @@ static void ball_anim_stopped_handler(Animation *animation, bool finished, void 
     bool hit = true;
     BallReflectionTypeEnum reflect_type = ball_reflection(&ball_rect_changing, &new_ball_dir_angle, &hit);
     if (reflect_type == DEATH) {
+#ifdef DEBUG
       text_layer_set_text(s_text_layer, "DEATH");
+#endif
       s_num_lives--;
       if (s_num_lives > 0) {
         reset_paddle();
@@ -1190,8 +1201,6 @@ static void load_map_from_resource(uint8_t level_id) {
 
 static bool load_resume_data_from_persist() {
   if (persist_exists(P_BLOCKS_DATA_KEY)) {
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "resume from persist");
-
     uint8_t res_size = persist_get_size(P_BLOCKS_DATA_KEY);
 
     uint8_t *buffer = (uint8_t*)malloc(res_size);
@@ -1244,8 +1253,6 @@ static bool load_resume_data_from_persist() {
       ball_animation(1000);
     }
 
-    APP_LOG(APP_LOG_LEVEL_DEBUG, " finish resume from persist");
-
     return true;
   } else {
     return false;
@@ -1286,7 +1293,6 @@ static void persist_resume_data() {
 }
 
 static void game_window_load(Window *window) {
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "game load");
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
 
@@ -1303,7 +1309,7 @@ static void game_window_load(Window *window) {
   layer_set_update_proc(s_status_layer, status_layer_draw);
   layer_add_child(window_layer, s_status_layer);
 
-
+#ifdef DEBUG
   s_text_layer = text_layer_create((GRect) {
     .origin = { 0, 10 },
     .size = { bounds.size.w, 20 }
@@ -1312,6 +1318,7 @@ static void game_window_load(Window *window) {
   text_layer_set_text(s_text_layer, "Press a button");
   text_layer_set_text_alignment(s_text_layer, GTextAlignmentCenter);
   layer_add_child(s_main_layer, text_layer_get_layer(s_text_layer));
+#endif
 
   s_ball_layer = layer_create((GRect) {
     .origin = {113, PADDLE_ORIGIN_Y-5},
@@ -1341,8 +1348,6 @@ static void game_window_load(Window *window) {
 
   s_block_shadow_path = gpath_create(&s_block_shadow_path_info);
 
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "game window load");
-
   if (s_is_resume && load_resume_data_from_persist()) {
 
   } else {
@@ -1367,13 +1372,13 @@ static void game_window_load(Window *window) {
 }
 
 static void game_window_unload(Window *window) {
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "game unload");
-
   animation_unschedule_all();
 
   persist_resume_data();
 
+#ifdef DEBUG
   layer_destroy((Layer *)s_text_layer);
+#endif
   layer_destroy(s_ball_layer);
   layer_destroy(s_paddle_layer);
   layer_destroy(s_aim_layer);
@@ -1428,9 +1433,9 @@ static void init(void) {
 
   s_main_window = window_create();
 
-  #ifdef PBL_PLATFORM_APLITE
-    window_set_fullscreen(s_main_window, true);
-  #endif
+#ifdef PBL_PLATFORM_APLITE
+  window_set_fullscreen(s_main_window, true);
+#endif
 
   s_arcade_font_8 = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_ARCADE_FONT_8));
 
@@ -1466,9 +1471,6 @@ static void deinit(void) {
 
 int main(void) {
   init();
-
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "Done initializing, pushed window: %p", s_main_window);
-
   app_event_loop();
   deinit();
 }
