@@ -72,7 +72,7 @@
 #define MAX_NUM_POWERUP_DROPS 10  // maximum number of currently dropping powerups
 #define MAX_NUM_LASER_FIRE 20     // maximum number of laser fire in the air
 #define PADDLE_MAX_SPEED 8
-#define HOLD_AIM_INC TRIG_MAX_ANGLE/0x30;
+#define HOLD_AIM_INC TRIG_MAX_ANGLE/0x28
 #define BALL_TIME_PER_DIST 12
 #define POWERUP_TIME_PER_DIST 50
 #define LASER_FIRE_TIME_PER_DIST 6
@@ -113,6 +113,7 @@ static Layer *s_laser_fire_layer_array[MAX_NUM_LASER_FIRE];
 static PropertyAnimation *s_laser_fire_animation_array[MAX_NUM_LASER_FIRE];
 static uint8_t s_num_laser_fire = 0;
 static GPath *s_block_shadow_path;
+static GBitmap *s_solid_block_bitmap;
 
 #define STATUS_LAYER_HEIGHT 16
 #define SCORE_MAX_WIDTH 5
@@ -158,18 +159,27 @@ GPathInfo s_block_shadow_path_info = {
 #define PADDLE_WIDTH_SMALL 16
 #define PADDLE_WIDTH_WIDE 60
 
+#ifdef PBL_COLOR
+
 uint32_t s_map_resource_array[] = {
-  RESOURCE_ID_MAP1,
-  RESOURCE_ID_MAP2
-  // RESOURCE_ID_MAP3,
-  // RESOURCE_ID_MAP4,
-  // RESOURCE_ID_MAP5,
-  // RESOURCE_ID_MAP6,
-  // RESOURCE_ID_MAP7,
-  // RESOURCE_ID_MAP8,
-  // RESOURCE_ID_MAP9,
-  // RESOURCE_ID_MAP10
+  RESOURCE_ID_MAP_COLOUR_TEST,
+  // RESOURCE_ID_MAP_ARKANOID1,
+  RESOURCE_ID_MAP_RAINBOW,
+  RESOURCE_ID_MAP_FACE,
+  RESOURCE_ID_MAP_SPACE_INVADER
 };
+
+#else
+
+uint32_t s_map_resource_array[] = {
+  RESOURCE_ID_MAP_RAINBOW,
+  RESOURCE_ID_MAP_FACE,
+  RESOURCE_ID_MAP_SPACE_INVADER
+};
+
+#endif
+
+
 
 typedef enum {
   WALL_VERT,
@@ -183,6 +193,9 @@ typedef enum {
   NO_REFLECT
 } BallReflectionTypeEnum;
 
+#define NUM_ENUM_POWERUPS 9    // number of powerups that can drop from block kills
+#define POWERUP_FREQ 1    // a power up will randomly appear a chance of 1/POWERUP_FREQ
+
 typedef enum {
   HOLD = 0,
   LASER = 1,
@@ -191,10 +204,15 @@ typedef enum {
   LIFE = 4,
   BOMB = 5,
   PLASMA = 6,
+  WRAP = 7,
+  FLIP = 8,
 
-  FIRST_BALL_HOLD = 7,
-  NONE = 8
+  FIRST_BALL_HOLD = 9,
+  NONE = 10
 } PowerupTypeEnum;
+
+static PowerupTypeEnum s_active_powerup;
+static bool s_is_holding_ball;
 
 static const char *s_powerup_names[] = {
   "HOLD",
@@ -204,6 +222,8 @@ static const char *s_powerup_names[] = {
   "LIFE",
   "BOMB",
   "PLASMA",
+  "WRAP",
+  "FLIP",
   "FIRST_BALL_HOLD",
   "NONE"
 };
@@ -213,11 +233,13 @@ static const char *s_powerup_names[] = {
 static const uint8_t s_powerup_colors_ARGB8[] = {
   GColorBlueARGB8,
   GColorRedARGB8,
-  GColorChromeYellowARGB8,
+  GColorIslamicGreenARGB8,
   GColorWindsorTanARGB8,
   GColorGreenARGB8,
   GColorCyanARGB8,
   GColorFashionMagentaARGB8,
+  GColorChromeYellowARGB8,
+  GColorImperialPurpleARGB8,
   GColorBlackARGB8,
   GColorBlackARGB8
 };
@@ -227,35 +249,28 @@ static const uint8_t s_powerup_colors_ARGB8[] = {
 // colour is the most significant nibble
 // number of hits to kill is the least significant nibble
 static const uint8_t s_block_colors_ARGB8[] = {
-  GColorRedARGB8,                 // 0x0
-  GColorOrangeARGB8,              // 0x1
-  GColorYellowARGB8,              // 0x2
-  GColorLimerickARGB8,            // 0x3
-  GColorGreenARGB8,               // 0x4
-  GColorIslamicGreenARGB8,        // 0x5
-  GColorCyanARGB8,                // 0x6
-  GColorVividCeruleanARGB8,       // 0x7
-  GColorDukeBlueARGB8,            // 0x8
-  GColorIndigoARGB8,              // 0x9
-  GColorFashionMagentaARGB8,      // 0xa
-  GColorLightGrayARGB8,           // 0xb
-  GColorLightGrayARGB8,           // 0xc
-  GColorLightGrayARGB8,           // 0xd
-  GColorLightGrayARGB8,           // 0xe
-  GColorLightGrayARGB8            // 0xf
+  GColorRedARGB8,             // 0x0
+  GColorOrangeARGB8,          // 0x1
+  GColorYellowARGB8,          // 0x2
+  GColorLimerickARGB8,        // 0x3
+  GColorGreenARGB8,           // 0x4
+  GColorIslamicGreenARGB8,    // 0x5
+  GColorCyanARGB8,            // 0x6
+  GColorVividCeruleanARGB8,   // 0x7
+  GColorDukeBlueARGB8,        // 0x8
+  GColorIndigoARGB8,          // 0x9
+  GColorFashionMagentaARGB8,  // 0xa
+  GColorLightGrayARGB8,       // 0xb
+  GColorWindsorTanARGB8,      // 0xc
+  GColorLightGrayARGB8,       // 0xd // unused
+  GColorLightGrayARGB8,       // 0xe // unused
+  GColorLightGrayARGB8        // 0xf // indestructible
 };
 
 #define s_powerup_colors(i) (GColor8) { .argb = s_powerup_colors_ARGB8[i] }
 #define s_block_colors(i) (GColor8) { .argb = s_block_colors_ARGB8[i] }
 
-  
 #endif
-
-#define NUM_ENUM_POWERUPS 7    // number of powerups that can drop from block kills
-#define POWERUP_FREQ 1    // a power up will randomly appear a chance of 1/POWERUP_FREQ
-
-static PowerupTypeEnum s_active_powerup;
-static bool s_is_holding_ball;
 
 static int16_t max(int16_t a, int16_t b) {
   if (a > b) {
@@ -269,6 +284,15 @@ static int16_t min(int16_t a, int16_t b) {
     return a;
   }
   return b;
+}
+
+static int8_t sign(int32_t a) {
+  if (a > 0) {
+    return 1;
+  } else if (a < 0) {
+    return -1;
+  }
+  return 0;
 }
 
 static GPoint get_ball_dir_point() {
@@ -318,7 +342,6 @@ static GColor8 color_get_darker(GColor8 color) {
 }
 #endif
 
-// 0x0f == 15 means infinite
 static uint8_t block_layer_get_num_hits_remaining(Layer *block_layer) {
   uint8_t *block_data = layer_get_data(block_layer);
   return (*block_data) & 0x0f;
@@ -337,15 +360,18 @@ static uint8_t block_layer_dec_num_hits_remaining(Layer *block_layer) {
 
 static void block_layer_draw(Layer *layer, GContext *ctx) {
   uint8_t num_hits = block_layer_get_num_hits_remaining(layer);
+  uint8_t *block_data = layer_get_data(layer);
   GRect bounds = layer_get_bounds(layer);
   // GRect inner_rect
 
-  if (num_hits > 0) {
+  if (*block_data == 0xff) {
+    graphics_draw_bitmap_in_rect(ctx, s_solid_block_bitmap, bounds);
+  } else if (num_hits > 0) {
     GRect inside_bounds = bounds;
 #ifdef PBL_COLOR
     uint8_t depth = num_hits - 1;
 #else
-    uint8_t depth = num_hits;
+    uint8_t depth = 5 - num_hits;
 #endif
     inside_bounds.origin.x += depth;
     inside_bounds.origin.y += depth;
@@ -365,10 +391,13 @@ static void block_layer_draw(Layer *layer, GContext *ctx) {
     graphics_context_set_fill_color(ctx, block_color);
     graphics_fill_rect(ctx, inside_bounds, 0, GCornersAll);
 #else
-    graphics_context_set_fill_color(ctx, GColorBlack);
+    graphics_context_set_fill_color(ctx, GColorWhite);
     graphics_fill_rect(ctx, bounds, 0, GCornersAll);
 
-    graphics_context_set_fill_color(ctx, GColorWhite);
+    graphics_context_set_stroke_color(ctx, GColorBlack);
+    graphics_draw_rect(ctx, bounds);
+
+    graphics_context_set_fill_color(ctx, GColorBlack);
     graphics_fill_rect(ctx, inside_bounds, 0, GCornersAll);
 #endif
   } else {
@@ -603,21 +632,21 @@ static void ball_animation(uint16_t delay);
 static void release_ball_from_hold();
 
 static void set_active_powerup(PowerupTypeEnum powerup_type) {
-  if (s_active_powerup == HOLD && 
-      powerup_type != HOLD && powerup_type != FIRST_BALL_HOLD &&
-      s_is_holding_ball) {
-    s_active_powerup = powerup_type;
-    release_ball_from_hold();
-  }
-
-  s_active_powerup = powerup_type;
-  
   if (powerup_type == LIFE) {
     s_num_lives++;
     layer_mark_dirty(s_status_layer);
   } else if (powerup_type == FIRST_BALL_HOLD) {
     s_is_holding_ball = true;
   }
+
+  if (s_active_powerup == HOLD && 
+      powerup_type != HOLD && powerup_type != FIRST_BALL_HOLD &&
+      s_is_holding_ball) {
+    s_active_powerup = powerup_type;
+    release_ball_from_hold();
+  }
+  
+  s_active_powerup = powerup_type;
 
   GRect paddle_frame = layer_get_frame(s_paddle_layer);
   uint8_t new_size = PADDLE_WIDTH_STANDARD;
@@ -649,10 +678,8 @@ static void move_paddle(ClickRecognizerRef recognizer) {
   int16_t numClicks = click_number_of_clicks_counted(recognizer);
   ButtonId buttonId = click_recognizer_get_button_id(recognizer);
   int16_t dirSign = 1;
-  if (buttonId == BUTTON_ID_UP) {
+  if ((buttonId == BUTTON_ID_UP) ^ (s_active_powerup == FLIP)) {
     dirSign = -1;
-  } else if (buttonId == BUTTON_ID_DOWN) {
-    dirSign = 1;
   }
 
   s_paddle_velocity = PADDLE_MAX_SPEED;
@@ -661,17 +688,25 @@ static void move_paddle(ClickRecognizerRef recognizer) {
   }
 
   s_paddle_velocity *= dirSign;
-  GRect frame = layer_get_frame(s_paddle_layer);
+  GRect paddle_frame = layer_get_frame(s_paddle_layer);
   GRect main_frame = layer_get_frame(s_main_layer);
 
-  int16_t new_x = frame.origin.x + s_paddle_velocity;
-  if (new_x < 0) {
-    new_x = 0;
-  } else if (new_x + frame.size.w > main_frame.size.w) {
-    new_x = main_frame.size.w - frame.size.w;
+  int16_t new_x = paddle_frame.origin.x + s_paddle_velocity;
+  if (s_active_powerup == WRAP) {
+    if (new_x < -paddle_frame.size.w/2) {
+      new_x = main_frame.size.w - paddle_frame.size.w/2;
+    } else if (new_x > main_frame.size.w - paddle_frame.size.w/2) {
+      new_x = -paddle_frame.size.w/2;
+    }
+  } else {
+    if (new_x < 0) {
+      new_x = 0;
+    } else if (new_x + paddle_frame.size.w > main_frame.size.w) {
+      new_x = main_frame.size.w - paddle_frame.size.w;
+    }
   }
-  frame.origin.x = new_x;
-  layer_set_frame(s_paddle_layer, frame);
+  paddle_frame.origin.x = new_x;
+  layer_set_frame(s_paddle_layer, paddle_frame);
   layer_mark_dirty(s_paddle_layer);
 }
 
@@ -722,7 +757,7 @@ static void reset_paddle() {
   });
 
   int16_t *aim_angle = layer_get_data(s_aim_layer);
-  *aim_angle = -TRIG_MAX_ANGLE/4;
+  *aim_angle = -TRIG_MAX_ANGLE/4 + HOLD_AIM_INC/2;
   layer_set_hidden(s_aim_layer, false);
   powerup_array_clear();
   laser_fire_array_clear();
@@ -745,7 +780,7 @@ static void select_rep_click_handler(ClickRecognizerRef recognizer, void *contex
 }
 
 static void click_config_provider(void *context) {
-  window_single_repeating_click_subscribe(BUTTON_ID_SELECT, 150, select_rep_click_handler);
+  window_single_repeating_click_subscribe(BUTTON_ID_SELECT, 400, select_rep_click_handler);
   window_single_repeating_click_subscribe(BUTTON_ID_UP, 30, btn_dir_rep_click_handler);
   window_single_repeating_click_subscribe(BUTTON_ID_DOWN, 30, btn_dir_rep_click_handler);
 }
@@ -992,6 +1027,17 @@ static void hit_block(Layer *block_layer, PowerupTypeEnum hit_by_powerup) {
   }
 }
 
+static void hold_ball() {
+  s_is_holding_ball = true;
+  int16_t *aim_angle = layer_get_data(s_aim_layer);
+  *aim_angle = -TRIG_MAX_ANGLE/4 + HOLD_AIM_INC/2;
+  GRect aim_rect = layer_get_frame(s_aim_layer);
+  GRect ball_rect = layer_get_frame(s_ball_layer);
+  aim_rect.origin.x = ball_rect.origin.x - 13;
+  layer_set_frame(s_aim_layer, aim_rect);
+  layer_set_hidden(s_aim_layer, false);
+}
+
 static BallReflectionTypeEnum ball_reflection(GRect *ball_rect, int16_t *new_ball_dir_angle, bool *hit) {
   int i;
   GPoint ball_dir = get_ball_dir_point();
@@ -1006,8 +1052,8 @@ static BallReflectionTypeEnum ball_reflection(GRect *ball_rect, int16_t *new_bal
 
   for (i = 0; i < 200; i++) {
     if (i == 0) {
-      next_rect.origin.x += ball_dir.x / ball_dir_abs_x;
-      next_rect.origin.y += ball_dir.y / ball_dir_abs_y;
+      next_rect.origin.x += sign(ball_dir.x);
+      next_rect.origin.y += sign(ball_dir.y);
     } else if (ball_dir_abs_x > ball_dir_abs_y) {
       next_rect.origin.x += ball_dir.x / ball_dir_abs_x;
       next_rect.origin.y += (i*ball_dir.y / ball_dir_abs_x) - ((i-1)*ball_dir.y / ball_dir_abs_x);
@@ -1119,12 +1165,7 @@ static void ball_anim_stopped_handler(Animation *animation, bool finished, void 
         window_stack_pop(true);
       }
     } else if (reflect_type == PADDLE_HIT && s_active_powerup == HOLD) {
-      GRect aim_rect = layer_get_frame(s_aim_layer);
-      GRect ball_rect = layer_get_frame(s_ball_layer);
-      aim_rect.origin.x = ball_rect.origin.x - 13;
-      layer_set_frame(s_aim_layer, aim_rect);
-      layer_set_hidden(s_aim_layer, false);
-      s_is_holding_ball = true;
+      hold_ball();
     } else {
       bool finished_level = false;
       if (hit) {
@@ -1201,7 +1242,7 @@ static void load_map_from_resource(uint8_t level_id) {
 
 static bool load_resume_data_from_persist() {
   if (persist_exists(P_BLOCKS_DATA_KEY)) {
-    uint8_t res_size = persist_get_size(P_BLOCKS_DATA_KEY);
+    uint16_t res_size = persist_get_size(P_BLOCKS_DATA_KEY);
 
     uint8_t *buffer = (uint8_t*)malloc(res_size);
     persist_read_data(P_BLOCKS_DATA_KEY, buffer, res_size);
@@ -1249,7 +1290,10 @@ static bool load_resume_data_from_persist() {
 
     layer_mark_dirty(s_status_layer);
 
-    if (s_active_powerup != FIRST_BALL_HOLD) {
+    if (s_ball_dir_angle == 0 && s_active_powerup == HOLD) {
+      // HOLD and s_is_holding_ball was true on persist
+      hold_ball();
+    } else if (s_active_powerup != FIRST_BALL_HOLD) {
       ball_animation(1000);
     }
 
@@ -1261,8 +1305,8 @@ static bool load_resume_data_from_persist() {
 
 static void persist_resume_data() {
   if (s_num_blocks > 0) {
-    uint8_t res_size = s_num_blocks*3;
-    uint8_t buffer[256];
+    uint16_t res_size = s_num_blocks*3;
+    uint8_t buffer[res_size];
 
     for (int i = 0; i < s_num_blocks; i++) {
       uint8_t *layer_data = (uint8_t *)layer_get_data(s_block_layer_array[i]);
@@ -1278,6 +1322,11 @@ static void persist_resume_data() {
     GRect ball_frame = layer_get_frame(s_ball_layer);
     ball_buff[0] = ball_frame.origin.x;
     ball_buff[1] = ball_frame.origin.y;
+
+    if (s_active_powerup == HOLD && s_is_holding_ball) {
+      s_ball_dir_angle = 0;
+    }
+
     ball_buff[2] = s_ball_dir_angle;
     persist_write_data(P_BALL_DATA_KEY, ball_buff, 6);
 
@@ -1338,8 +1387,6 @@ static void game_window_load(Window *window) {
     .origin = {100, PADDLE_ORIGIN_Y-17},
     .size = {PADDLE_WIDTH_STANDARD, 15}
   }, 2);
-  int16_t *aim_angle = layer_get_data(s_aim_layer);
-  *aim_angle = -TRIG_MAX_ANGLE/4;
   layer_set_update_proc(s_aim_layer, aim_layer_draw);
   layer_add_child(s_main_layer, s_aim_layer);
 
@@ -1347,9 +1394,11 @@ static void game_window_load(Window *window) {
   laser_fire_layers_create();
 
   s_block_shadow_path = gpath_create(&s_block_shadow_path_info);
+  s_solid_block_bitmap = gbitmap_create_with_resource(RESOURCE_ID_INDESTRUCTIBLE_BLOCK_PNG);
 
   if (s_is_resume && load_resume_data_from_persist()) {
-
+    // do nothing
+    // if load_resume_data_from_persist returns true then it has already done everything to resume
   } else {
     load_map_from_resource(0);
     set_active_powerup(FIRST_BALL_HOLD);
@@ -1385,6 +1434,7 @@ static void game_window_unload(Window *window) {
   layer_destroy(s_status_layer);
 
   gpath_destroy(s_block_shadow_path);
+  gbitmap_destroy(s_solid_block_bitmap);
 
   block_array_destroy();
   powerup_array_destroy();
