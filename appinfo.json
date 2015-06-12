@@ -48,6 +48,11 @@
           "name": "MAP_RAINBOW",
           "file": "map_rainbow.dat",
           "type": "raw"
+        },
+        {
+          "name": "MAP_BALL",
+          "file": "map_ball.dat",
+          "type": "raw"
         }
       ]
   }

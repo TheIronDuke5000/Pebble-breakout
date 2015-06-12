@@ -79,7 +79,7 @@
 
 #define BOMB_BLAST_RADIUS 20
 
-// #define DEBUG
+#define DEBUG
 
 #ifdef DEBUG
 static TextLayer *s_text_layer;
@@ -98,7 +98,7 @@ static int16_t s_ball_dir_angle;
 static PropertyAnimation *s_ball_animation;
 static Layer *s_paddle_layer;
 static int16_t s_paddle_velocity;
-static Layer **s_block_layer_array;
+static Layer *s_block_layer_array[255];
 static uint16_t s_num_blocks = 0;
 static Layer *s_aim_layer;
 static bool s_is_resume;
@@ -150,10 +150,13 @@ GPathInfo s_block_shadow_path_info = {
 #define P_PADDLE_KEY 0        // int for x value of origin of paddle layer
 #define P_BALL_DATA_KEY 1     // array of 3 int16_t, [x, y, angle]    2 bytes per int16_t * 3 = 6 bytes 
 #define P_POWERUP_KEY 2       // PowerupTypeEnum saved as an int
-#define P_BLOCKS_DATA_KEY 4   // array of bytes with the same format as the file (HH XX YY) HH is the nubmer of hits remaining
-#define P_LIVES_KEY 5
-#define P_LEVEL_KEY 6
-#define P_SCORE_KEY 7
+#define P_BLOCKS_DATA_START_KEY 4   // array of bytes with the same format as the file (HH XX YY) HH is the nubmer of hits remaining
+// P_BLOCKS_DATA_KEY + table_index gives access to locations 4-19, this is 16*256 bytes 
+// 4-19 reserved for P_BLOCKS_DATA_KEY + table_index
+#define P_BLOCKS_DATA_END_KEY 19
+#define P_LIVES_KEY 20
+#define P_LEVEL_KEY 21
+#define P_SCORE_KEY 22
 
 #define PADDLE_WIDTH_STANDARD 30
 #define PADDLE_WIDTH_SMALL 16
@@ -163,6 +166,7 @@ GPathInfo s_block_shadow_path_info = {
 
 uint32_t s_map_resource_array[] = {
   // RESOURCE_ID_MAP_COLOUR_TEST,
+  RESOURCE_ID_MAP_BALL,
   RESOURCE_ID_MAP_ARKANOID1,
   RESOURCE_ID_MAP_FACE,
   RESOURCE_ID_MAP_RAINBOW,
@@ -174,6 +178,7 @@ uint32_t s_map_resource_array[] = {
 uint32_t s_map_resource_array[] = {
   RESOURCE_ID_MAP_FACE,
   RESOURCE_ID_MAP_RAINBOW,
+  RESOURCE_ID_MAP_BALL,
   RESOURCE_ID_MAP_SPACE_INVADER
 };
 
@@ -237,7 +242,7 @@ static const uint8_t s_powerup_colors_ARGB8[] = {
   GColorWindsorTanARGB8,
   GColorGreenARGB8,
   GColorCyanARGB8,
-  GColorFashionMagentaARGB8,
+  GColorMagentaARGB8,
   GColorChromeYellowARGB8,
   GColorImperialPurpleARGB8,
   GColorBlackARGB8,
@@ -250,7 +255,7 @@ static const uint8_t s_powerup_colors_ARGB8[] = {
 // number of hits to kill is the least significant nibble
 static const uint8_t s_block_colors_ARGB8[] = {
   GColorRedARGB8,             // 0x0
-  GColorOrangeARGB8,          // 0x1
+  GColorChromeYellowARGB8,    // 0x1
   GColorYellowARGB8,          // 0x2
   GColorLimerickARGB8,        // 0x3
   GColorGreenARGB8,           // 0x4
@@ -259,7 +264,7 @@ static const uint8_t s_block_colors_ARGB8[] = {
   GColorVividCeruleanARGB8,   // 0x7
   GColorDukeBlueARGB8,        // 0x8
   GColorIndigoARGB8,          // 0x9
-  GColorFashionMagentaARGB8,  // 0xa
+  GColorMagentaARGB8,         // 0xa
   GColorLightGrayARGB8,       // 0xb
   GColorWindsorTanARGB8,      // 0xc
   GColorLightGrayARGB8,       // 0xd // unused
@@ -509,10 +514,6 @@ static void block_array_destroy() {
   for (int i = 0; i < s_num_blocks; i++) {
     layer_destroy(s_block_layer_array[i]);
   }
-  if (s_block_layer_array != NULL) {
-    free(s_block_layer_array);
-  }
-  s_block_layer_array = NULL;
   s_num_blocks = 0;
 }
 
@@ -871,9 +872,6 @@ static void scehdule_laser_animation(Layer *laser_fire_layer) {
 }
 
 static void shoot_laser() {
-#ifdef DEBUG
-  // text_layer_set_text(s_text_layer, "drop powerup");
-#endif
   GRect paddle_frame = layer_get_frame(s_paddle_layer);
   GRect frame = (GRect) {
     .origin = {
@@ -1205,17 +1203,14 @@ static void ball_animation(uint16_t delay) {
   animation_schedule((Animation*)s_ball_animation);
 }
 
-static void load_map_from_buffer(uint8_t *buffer, uint8_t buffer_len) {
+static void load_map_from_buffer(uint8_t *buffer, uint16_t buffer_len) {
   block_array_destroy();
 
   s_num_blocks = buffer_len / 3;
-
-  s_block_layer_array = (Layer **)malloc(s_num_blocks*(sizeof(Layer *)));
-
   GRect block_rect = (GRect) { .origin = {0, 0}, .size = s_block_size};
 
   // create blocks
-  int16_t i;
+  uint16_t i;
   for (i = 0; i < s_num_blocks; i++) {
     block_rect.origin.x = buffer[i*3 + 1];
     block_rect.origin.y = buffer[i*3 + 2];
@@ -1232,7 +1227,7 @@ static void load_map_from_buffer(uint8_t *buffer, uint8_t buffer_len) {
 static void load_map_from_resource(uint8_t level_id) {
   // Get resource and size
   ResHandle handle = resource_get_handle(s_map_resource_array[level_id]);
-  uint8_t res_size = (uint8_t)resource_size(handle);
+  uint16_t res_size = (uint16_t)resource_size(handle);
   uint8_t *buffer = (uint8_t*)malloc(res_size);
   resource_load(handle, buffer, res_size);
 
@@ -1241,14 +1236,26 @@ static void load_map_from_resource(uint8_t level_id) {
 }
 
 static bool load_resume_data_from_persist() {
-  if (persist_exists(P_BLOCKS_DATA_KEY)) {
-    uint16_t res_size = persist_get_size(P_BLOCKS_DATA_KEY);
+  if (persist_exists(P_BLOCKS_DATA_START_KEY)) {
+    uint8_t num_data_keys = 0;
+    while (persist_exists(num_data_keys + P_BLOCKS_DATA_START_KEY) &&
+           num_data_keys + P_BLOCKS_DATA_START_KEY <= P_BLOCKS_DATA_END_KEY) {
+      num_data_keys++;
+    }
 
-    uint8_t *buffer = (uint8_t*)malloc(res_size);
-    persist_read_data(P_BLOCKS_DATA_KEY, buffer, res_size);
+    uint16_t res_size;
+    uint8_t *buffer = (uint8_t*)malloc(PERSIST_DATA_MAX_LENGTH * num_data_keys);
+    uint16_t buff_size = 0;
+    for (uint8_t data_key = P_BLOCKS_DATA_START_KEY; data_key < num_data_keys + P_BLOCKS_DATA_START_KEY; data_key++) {
+      if (persist_exists(data_key)) {
+        res_size = persist_get_size(data_key);
+        buff_size += persist_read_data(data_key, buffer + buff_size, res_size);
+      } else {
+        break;
+      }
+    }
 
-    load_map_from_buffer(buffer, res_size);
-
+    load_map_from_buffer(buffer, buff_size);
     free(buffer);
 
     if (persist_exists(P_BALL_DATA_KEY)) {
@@ -1306,17 +1313,34 @@ static bool load_resume_data_from_persist() {
 static void persist_resume_data() {
   if (s_num_blocks > 0) {
     uint16_t res_size = s_num_blocks*3;
-    uint8_t buffer[res_size];
+    uint8_t buffer[PERSIST_DATA_MAX_LENGTH];
+    int16_t remaining_size = res_size;
+    uint16_t stored_size_blocks = 0;
+    uint8_t data_key = P_BLOCKS_DATA_START_KEY;
 
-    for (int i = 0; i < s_num_blocks; i++) {
-      uint8_t *layer_data = (uint8_t *)layer_get_data(s_block_layer_array[i]);
-      GRect frame = layer_get_frame(s_block_layer_array[i]);
-      buffer[i*3] = *layer_data;
-      buffer[i*3+1] = frame.origin.x;
-      buffer[i*3+2] = frame.origin.y;
+    while (remaining_size > 0) {
+      uint16_t data_size = (remaining_size > PERSIST_DATA_MAX_LENGTH) ? PERSIST_DATA_MAX_LENGTH : remaining_size;
+      uint16_t data_size_blocks = data_size/3;
+      data_size = data_size_blocks*3; // only store completed blocks into the buffer
+
+      for (int i = 0; i < data_size_blocks; i++) {
+        uint8_t *layer_data = (uint8_t *)layer_get_data(s_block_layer_array[stored_size_blocks + i]);
+        GRect frame = layer_get_frame(s_block_layer_array[stored_size_blocks + i]);
+        buffer[i*3] = *layer_data;
+        buffer[i*3+1] = frame.origin.x;
+        buffer[i*3+2] = frame.origin.y;
+      }
+
+      persist_write_data(data_key, buffer, data_size);
+      data_key++;
+      remaining_size -= data_size;
+      stored_size_blocks += data_size_blocks;
     }
 
-    persist_write_data(P_BLOCKS_DATA_KEY, buffer, res_size);
+    while (data_key <= P_BLOCKS_DATA_END_KEY) {
+      persist_delete(data_key);
+      data_key++;
+    }
 
     int16_t ball_buff[3];
     GRect ball_frame = layer_get_frame(s_ball_layer);
@@ -1440,8 +1464,6 @@ static void game_window_unload(Window *window) {
   powerup_array_destroy();
   laser_fire_array_destroy();
   layer_destroy(s_main_layer);
-
-
 }
 
 static void menu_new_game_callback(int index, void *context) {
@@ -1451,7 +1473,7 @@ static void menu_new_game_callback(int index, void *context) {
 }
 
 static void menu_resume_callback(int index, void *context) {
-  if (persist_exists(P_BLOCKS_DATA_KEY)) {
+  if (persist_exists(P_BLOCKS_DATA_START_KEY)) {
     s_is_resume = true;
     window_stack_push(s_main_window, true);
   } else {
