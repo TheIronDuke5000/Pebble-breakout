@@ -70,14 +70,14 @@
 #include <pebble.h>
 
 #define MAX_NUM_POWERUP_DROPS 10  // maximum number of currently dropping powerups
-#define MAX_NUM_LASER_FIRE 20     // maximum number of laser fire in the air
+#define MAX_NUM_LASER_FIRE 10     // maximum number of laser fire in the air
 #define PADDLE_MAX_SPEED 8
 #define HOLD_AIM_INC TRIG_MAX_ANGLE/0x28
 #define BALL_TIME_PER_DIST 12
 #define POWERUP_TIME_PER_DIST 50
 #define LASER_FIRE_TIME_PER_DIST 6
-
 #define BOMB_BLAST_RADIUS 20
+#define MAX_NUM_BLOCKS 120
 
 #define DEBUG
 
@@ -98,7 +98,7 @@ static int16_t s_ball_dir_angle;
 static PropertyAnimation *s_ball_animation;
 static Layer *s_paddle_layer;
 static int16_t s_paddle_velocity;
-static Layer *s_block_layer_array[255];
+static Layer *s_block_layer_array[MAX_NUM_BLOCKS];
 static uint16_t s_num_blocks = 0;
 static Layer *s_aim_layer;
 static bool s_is_resume;
@@ -166,19 +166,23 @@ GPathInfo s_block_shadow_path_info = {
 
 uint32_t s_map_resource_array[] = {
   // RESOURCE_ID_MAP_COLOUR_TEST,
-  RESOURCE_ID_MAP_BALL,
+  RESOURCE_ID_MAP_ONE_BLOCK,
   RESOURCE_ID_MAP_ARKANOID1,
   RESOURCE_ID_MAP_FACE,
+  RESOURCE_ID_MAP_BALL,
   RESOURCE_ID_MAP_RAINBOW,
+  RESOURCE_ID_MAP_CLOCK,
   RESOURCE_ID_MAP_SPACE_INVADER
 };
 
 #else
 
 uint32_t s_map_resource_array[] = {
+  RESOURCE_ID_MAP_ONE_BLOCK,
   RESOURCE_ID_MAP_FACE,
-  RESOURCE_ID_MAP_RAINBOW,
   RESOURCE_ID_MAP_BALL,
+  RESOURCE_ID_MAP_RAINBOW,
+  RESOURCE_ID_MAP_CLOCK,
   RESOURCE_ID_MAP_SPACE_INVADER
 };
 

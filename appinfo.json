@@ -14,46 +14,56 @@
   },
   "resources": {
     "media": [
-        {
-          "name": "ARCADE_FONT_8",
-          "file": "ARCADE_FONT_TTF.ttf",
-          "type": "font"
-        },
-        {
-          "name": "INDESTRUCTIBLE_BLOCK_PNG",
-          "file": "indestructible_brick.png",
-          "type": "png"
-        },
-        {
-          "name": "MAP_COLOUR_TEST",
-          "file": "map_colour_test.dat",
-          "type": "raw"
-        },
-        {
-          "name": "MAP_SPACE_INVADER",
-          "file": "map_space_invader.dat",
-          "type": "raw"
-        },
-        {
-          "name": "MAP_ARKANOID1",
-          "file": "map_arkanoid1.dat",
-          "type": "raw"
-        },
-        {
-          "name": "MAP_FACE",
-          "file": "map_face.dat",
-          "type": "raw"
-        },
-        {
-          "name": "MAP_RAINBOW",
-          "file": "map_rainbow.dat",
-          "type": "raw"
-        },
-        {
-          "name": "MAP_BALL",
-          "file": "map_ball.dat",
-          "type": "raw"
-        }
-      ]
+      {
+        "name": "ARCADE_FONT_8",
+        "file": "ARCADE_FONT_TTF.ttf",
+        "type": "font"
+      },
+      {
+        "name": "INDESTRUCTIBLE_BLOCK_PNG",
+        "file": "indestructible_brick.png",
+        "type": "png"
+      },
+      {
+        "name": "MAP_COLOUR_TEST",
+        "file": "map_colour_test.dat",
+        "type": "raw"
+      },
+      {
+        "name": "MAP_SPACE_INVADER",
+        "file": "map_space_invader.dat",
+        "type": "raw"
+      },
+      {
+        "name": "MAP_ARKANOID1",
+        "file": "map_arkanoid1.dat",
+        "type": "raw"
+      },
+      {
+        "name": "MAP_FACE",
+        "file": "map_face.dat",
+        "type": "raw"
+      },
+      {
+        "name": "MAP_RAINBOW",
+        "file": "map_rainbow.dat",
+        "type": "raw"
+      },
+      {
+        "name": "MAP_BALL",
+        "file": "map_ball.dat",
+        "type": "raw"
+      },
+      {
+        "name": "MAP_CLOCK",
+        "file": "map_clock.dat",
+        "type": "raw"
+      },
+      {
+        "name": "MAP_ONE_BLOCK",
+        "file": "map_one_block.dat",
+        "type": "raw"
+      }
+    ]
   }
 }
