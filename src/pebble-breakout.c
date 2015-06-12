@@ -162,18 +162,18 @@ GPathInfo s_block_shadow_path_info = {
 #ifdef PBL_COLOR
 
 uint32_t s_map_resource_array[] = {
-  RESOURCE_ID_MAP_COLOUR_TEST,
-  // RESOURCE_ID_MAP_ARKANOID1,
-  RESOURCE_ID_MAP_RAINBOW,
+  // RESOURCE_ID_MAP_COLOUR_TEST,
+  RESOURCE_ID_MAP_ARKANOID1,
   RESOURCE_ID_MAP_FACE,
+  RESOURCE_ID_MAP_RAINBOW,
   RESOURCE_ID_MAP_SPACE_INVADER
 };
 
 #else
 
 uint32_t s_map_resource_array[] = {
-  RESOURCE_ID_MAP_RAINBOW,
   RESOURCE_ID_MAP_FACE,
+  RESOURCE_ID_MAP_RAINBOW,
   RESOURCE_ID_MAP_SPACE_INVADER
 };
 
@@ -193,8 +193,8 @@ typedef enum {
   NO_REFLECT
 } BallReflectionTypeEnum;
 
-#define NUM_ENUM_POWERUPS 9    // number of powerups that can drop from block kills
-#define POWERUP_FREQ 1    // a power up will randomly appear a chance of 1/POWERUP_FREQ
+#define NUM_ENUM_POWERUPS 9     // number of powerups that can drop from block kills
+#define POWERUP_FREQ 3          // a power up will randomly appear a chance of 1/POWERUP_FREQ
 
 typedef enum {
   HOLD = 0,
@@ -1440,17 +1440,22 @@ static void game_window_unload(Window *window) {
   powerup_array_destroy();
   laser_fire_array_destroy();
   layer_destroy(s_main_layer);
+
+
 }
 
 static void menu_new_game_callback(int index, void *context) {
   s_is_resume = false;
   window_stack_push(s_main_window, true);
+  simple_menu_layer_set_selected_index(s_menu_layer, 0, false);
 }
 
 static void menu_resume_callback(int index, void *context) {
   if (persist_exists(P_BLOCKS_DATA_KEY)) {
     s_is_resume = true;
     window_stack_push(s_main_window, true);
+  } else {
+    simple_menu_layer_set_selected_index(s_menu_layer, 1, false);
   }
 }
 
