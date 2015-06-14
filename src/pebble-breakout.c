@@ -79,7 +79,7 @@
 #define BOMB_BLAST_RADIUS 20
 #define MAX_NUM_BLOCKS 120
 
-#define DEBUG
+// #define DEBUG
 
 #ifdef DEBUG
 static TextLayer *s_text_layer;
@@ -91,7 +91,7 @@ static SimpleMenuLayer *s_menu_layer;
 static Layer *s_status_layer;
 static SimpleMenuSection s_menu_section;
 static SimpleMenuItem s_menu_items[2];
-static Window *s_main_window;
+static Window *s_game_window;
 static Layer *s_main_layer;
 static Layer *s_ball_layer;
 static int16_t s_ball_dir_angle;
@@ -522,7 +522,7 @@ static void block_array_destroy() {
 }
 
 static void powerup_array_destroy() {
-  for (int i = 0; i < s_num_powerup_drops; i++) {
+  for (int i = 0; i < MAX_NUM_POWERUP_DROPS; i++) {
     layer_destroy(s_powerup_layer_array[i]);
     // if (s_powerup_animation_array[i] != NULL) {
     //   property_animation_destroy(s_powerup_animation_array[i]);
@@ -568,7 +568,7 @@ static void powerup_layers_create() {
     .origin = {0, 0},
     .size = s_powerup_frame.size
   };
-  for (int i = 0; i < MAX_NUM_POWERUP_DROPS; i++) {
+  for (uint16_t i = 0; i < MAX_NUM_POWERUP_DROPS; i++) {
     powerup_layer = layer_create_with_data(frame, 1);
     layer_data = layer_get_data(powerup_layer);
     *layer_data = (uint8_t)NONE;
@@ -581,7 +581,7 @@ static void powerup_layers_create() {
 }
 
 static void laser_fire_array_destroy() {
-  for (int i = 0; i < s_num_laser_fire; i++) {
+  for (uint16_t i = 0; i < MAX_NUM_LASER_FIRE; i++) {
     layer_destroy(s_laser_fire_layer_array[i]);
     // if (s_laser_fire_animation_array[i] != NULL) {
     //   property_animation_destroy(s_laser_fire_animation_array[i]);
@@ -591,11 +591,9 @@ static void laser_fire_array_destroy() {
 }
 
 static void laser_fire_array_clear() {
-  for (int i = 0; i < MAX_NUM_LASER_FIRE; i++) {
+  for (uint16_t i = 0; i < MAX_NUM_LASER_FIRE; i++) {
     layer_set_hidden(s_laser_fire_layer_array[i], true);
-    if (s_laser_fire_animation_array[i] != NULL) {
-      animation_unschedule((Animation *)s_laser_fire_animation_array[i]);
-    }
+    animation_unschedule((Animation *)s_laser_fire_animation_array[i]);
   }
   s_num_laser_fire = 0;
 }
@@ -603,7 +601,7 @@ static void laser_fire_array_clear() {
 static bool laser_fire_layer_clear(Layer *laser_fire_layer) {
   bool found_layer = false;
   layer_set_hidden(laser_fire_layer, true);
-  for (int i = 0; i < s_num_laser_fire; i++) {
+  for (uint16_t i = 0; i < s_num_laser_fire; i++) {
     if (found_layer) {
       s_laser_fire_layer_array[i-1] = s_laser_fire_layer_array[i];
       s_laser_fire_animation_array[i-1] = s_laser_fire_animation_array[i];
@@ -1370,7 +1368,6 @@ static void persist_resume_data() {
 }
 
 static void game_window_load(Window *window) {
-  Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
 
   s_main_layer = layer_create((GRect) {
@@ -1472,14 +1469,14 @@ static void game_window_unload(Window *window) {
 
 static void menu_new_game_callback(int index, void *context) {
   s_is_resume = false;
-  window_stack_push(s_main_window, true);
+  window_stack_push(s_game_window, true);
   simple_menu_layer_set_selected_index(s_menu_layer, 0, false);
 }
 
 static void menu_resume_callback(int index, void *context) {
   if (persist_exists(P_BLOCKS_DATA_START_KEY)) {
     s_is_resume = true;
-    window_stack_push(s_main_window, true);
+    window_stack_push(s_game_window, true);
   } else {
     simple_menu_layer_set_selected_index(s_menu_layer, 1, false);
   }
@@ -1512,16 +1509,16 @@ static void menu_window_unload(Window *window) {
 static void init(void) {
   s_menu_window = window_create();
 
-  s_main_window = window_create();
+  s_game_window = window_create();
 
 #ifdef PBL_PLATFORM_APLITE
-  window_set_fullscreen(s_main_window, true);
+  window_set_fullscreen(s_game_window, true);
 #endif
 
   s_arcade_font_8 = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_ARCADE_FONT_8));
 
-  window_set_click_config_provider(s_main_window, click_config_provider);
-  window_set_window_handlers(s_main_window, (WindowHandlers) {
+  window_set_click_config_provider(s_game_window, click_config_provider);
+  window_set_window_handlers(s_game_window, (WindowHandlers) {
     .load = game_window_load,
     .unload = game_window_unload,
   });
@@ -1539,14 +1536,10 @@ static void deinit(void) {
   // Stop any animation in progress
   animation_unschedule_all();
 
-  block_array_destroy();
-  powerup_array_destroy();
-  laser_fire_array_destroy();
-
   fonts_unload_custom_font(s_arcade_font_8);
 
   // Destroy main Window
-  window_destroy(s_main_window);
+  window_destroy(s_game_window);
   window_destroy(s_menu_window);
 }
 

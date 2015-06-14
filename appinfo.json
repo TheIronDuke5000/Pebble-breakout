@@ -17,6 +17,7 @@
       {
         "name": "ARCADE_FONT_8",
         "file": "ARCADE_FONT_TTF.ttf",
+        "characterRegex": "[\t-~]",
         "type": "font"
       },
       {
