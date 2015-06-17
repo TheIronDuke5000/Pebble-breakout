@@ -98,7 +98,7 @@ static int16_t s_ball_dir_angle;
 static PropertyAnimation *s_ball_animation;
 static Layer *s_paddle_layer;
 static int16_t s_paddle_velocity;
-static Layer *s_block_layer_array[MAX_NUM_BLOCKS];
+static Layer **s_block_layer_array;
 static uint16_t s_num_blocks = 0;
 static Layer *s_aim_layer;
 static bool s_is_resume;
@@ -203,7 +203,7 @@ typedef enum {
 } BallReflectionTypeEnum;
 
 #define NUM_ENUM_POWERUPS 9     // number of powerups that can drop from block kills
-#define POWERUP_FREQ 3          // a power up will randomly appear a chance of 1/POWERUP_FREQ
+#define POWERUP_FREQ 100          // a power up will randomly appear a chance of 1/POWERUP_FREQ
 
 typedef enum {
   HOLD = 0,
@@ -512,11 +512,15 @@ static void laser_fire_layer_draw(Layer *layer, GContext *ctx) {
 }
 
 static void block_array_destroy() {
-  for (int i = 0; i < s_num_blocks; i++) {
-    if (s_block_layer_array[i] != NULL) {
-      layer_destroy(s_block_layer_array[i]);
-      s_block_layer_array[i] = NULL;
+  if (s_block_layer_array != NULL) {
+    for (int i = 0; i < s_num_blocks; i++) {
+      if (s_block_layer_array[i] != NULL) {
+        layer_destroy(s_block_layer_array[i]);
+        s_block_layer_array[i] = NULL;
+      }
     }
+    free(s_block_layer_array);
+    s_block_layer_array = NULL;
   }
   s_num_blocks = 0;
 }
@@ -532,30 +536,40 @@ static void powerup_array_destroy() {
 }
 
 static void powerup_array_clear() {
-  for (int i = 0; i < MAX_NUM_POWERUP_DROPS; i++) {
+  for (uint16_t i = 0; i < MAX_NUM_POWERUP_DROPS; i++) {
     layer_set_hidden(s_powerup_layer_array[i], true);
   }
   s_num_powerup_drops = 0;
 }
 
-static bool powerup_layer_clear(Layer *powerup_layer) {
-  bool found_layer = false;
+static int16_t powerup_layer_clear(Layer *powerup_layer) {
   layer_set_hidden(powerup_layer, true);
   uint8_t *layer_data = layer_get_data(powerup_layer);
+  int16_t powerup_index = -1;
   *layer_data = (uint8_t)NONE;
   for (int i = 0; i < s_num_powerup_drops; i++) {
-    if (found_layer) {
+    if (powerup_index > -1) {
       s_powerup_layer_array[i-1] = s_powerup_layer_array[i];
       s_powerup_animation_array[i-1] = s_powerup_animation_array[i];
     } else if (powerup_layer == s_powerup_layer_array[i]) {
-      found_layer = true;
+      powerup_index = i;
     }
   }
-  if (found_layer) {
+  if (powerup_index > -1) {
     s_num_powerup_drops--;
     s_powerup_layer_array[s_num_powerup_drops] = powerup_layer;
+    s_powerup_animation_array[s_num_powerup_drops] = NULL;
   }
-  return found_layer;
+  return powerup_index;
+}
+
+static int16_t powerup_layer_get_index(Layer *powerup_layer) {
+  for (uint16_t i = 0; i < s_num_powerup_drops; i++) {
+    if (powerup_layer == s_powerup_layer_array[i]) {
+      return i;
+    }
+  }
+  return -1;
 }
 
 static void powerup_layers_create() {
@@ -580,9 +594,6 @@ static void powerup_layers_create() {
 static void laser_fire_array_destroy() {
   for (uint16_t i = 0; i < MAX_NUM_LASER_FIRE; i++) {
     layer_destroy(s_laser_fire_layer_array[i]);
-    // if (s_laser_fire_animation_array[i] != NULL) {
-    //   property_animation_destroy(s_laser_fire_animation_array[i]);
-    // }
   }
   s_num_laser_fire = 0;
 }
@@ -594,22 +605,32 @@ static void laser_fire_array_clear() {
   s_num_laser_fire = 0;
 }
 
-static bool laser_fire_layer_clear(Layer *laser_fire_layer) {
-  bool found_layer = false;
+static int16_t laser_fire_layer_clear(Layer *laser_fire_layer) {
   layer_set_hidden(laser_fire_layer, true);
+  int16_t laser_index = -1;
   for (uint16_t i = 0; i < s_num_laser_fire; i++) {
-    if (found_layer) {
+    if (laser_index > -1) {
       s_laser_fire_layer_array[i-1] = s_laser_fire_layer_array[i];
       s_laser_fire_animation_array[i-1] = s_laser_fire_animation_array[i];
     } else if (laser_fire_layer == s_laser_fire_layer_array[i]) {
-      found_layer = true;
+      laser_index = i;
     }
   }
-  if (found_layer) {
+  if (laser_index > -1) {
     s_num_laser_fire--;
     s_laser_fire_layer_array[s_num_laser_fire] = laser_fire_layer;
+    s_laser_fire_animation_array[s_num_laser_fire] = NULL;
   }
-  return found_layer;
+  return laser_index;
+}
+
+static int16_t laser_fire_layer_get_index(Layer *laser_fire_layer) {
+  for (uint16_t i = 0; i < s_num_laser_fire; i++) {
+    if (laser_fire_layer == s_laser_fire_layer_array[i]) {
+      return i;
+    }
+  }
+  return -1;
 }
 
 static void laser_fire_layers_create() {
@@ -735,9 +756,6 @@ static void move_aim(ClickRecognizerRef recognizer) {
 
 static void reset_paddle() {
   set_active_powerup(FIRST_BALL_HOLD);
-  if (true || s_level == 0) {
-    animation_unschedule_all();
-  }
 
   GRect main_frame = layer_get_frame(s_main_layer);
   uint8_t paddle_origin_x = main_frame.size.w/2 - PADDLE_WIDTH_STANDARD/2;
@@ -760,6 +778,7 @@ static void reset_paddle() {
   int16_t *aim_angle = layer_get_data(s_aim_layer);
   *aim_angle = -TRIG_MAX_ANGLE/4 + HOLD_AIM_INC/2;
   layer_set_hidden(s_aim_layer, false);
+
   powerup_array_clear();
   laser_fire_array_clear();
 }
@@ -824,20 +843,22 @@ static void laser_fire_anim_stopped_handler(Animation *animation, bool finished,
 
   if (context != NULL && finished) {
     Layer *laser_fire_layer = (Layer *)context;
-    GRect laser_fire_frame = layer_get_frame(laser_fire_layer);
-    GRect finish = laser_fire_frame;
-    Layer *block_layer = NULL;
-    bool hit = true;
-    laser_fire_find_end(laser_fire_layer, &finish, &block_layer, &hit);
+    if (!layer_get_hidden(laser_fire_layer)) {
+      GRect laser_fire_frame = layer_get_frame(laser_fire_layer);
+      GRect finish = laser_fire_frame;
+      Layer *block_layer = NULL;
+      bool hit = true;
+      laser_fire_find_end(laser_fire_layer, &finish, &block_layer, &hit);
 
 
-    if (hit) {
-      if (block_layer != NULL) {
-        hit_block(block_layer, LASER);
+      if (hit) {
+        if (block_layer != NULL) {
+          hit_block(block_layer, LASER);
+        }
+        laser_fire_layer_clear(laser_fire_layer);
+      } else {
+        scehdule_laser_animation(laser_fire_layer);
       }
-      laser_fire_layer_clear(laser_fire_layer);
-    } else {
-      scehdule_laser_animation(laser_fire_layer);
     }
   }
 }
@@ -894,27 +915,30 @@ static void shoot_laser() {
 }
 
 static void powerup_anim_stopped_handler(Animation *animation, bool finished, void *context) {
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "powerup stop %d, %p", finished ? 1 : 0, context);
   property_animation_destroy((PropertyAnimation *)animation);
 
-  if (context != NULL && finished) {
+  if (finished && context != NULL) {
     Layer *powerup_layer = (Layer *)context;
-    uint8_t *powerup_data = layer_get_data(powerup_layer);
-    GRect powerup_frame = layer_get_frame(powerup_layer);
-    GRect paddle_frame = layer_get_frame(s_paddle_layer);
+    if (!layer_get_hidden(powerup_layer)) {
+      // APP_LOG(APP_LOG_LEVEL_DEBUG, "powerup stop mid %d, %p", finished ? 1 : 0, context);
+      uint8_t *powerup_data = layer_get_data(powerup_layer);
+      GRect powerup_frame = layer_get_frame(powerup_layer);
+      GRect paddle_frame = layer_get_frame(s_paddle_layer);
 
-    GRect pill_frame = s_powerup_pill_frame;
-    pill_frame.origin.x += powerup_frame.origin.x;
-    pill_frame.origin.y += powerup_frame.origin.y;
+      GRect pill_frame = s_powerup_pill_frame;
+      pill_frame.origin.x += powerup_frame.origin.x;
+      pill_frame.origin.y += powerup_frame.origin.y;
 
-    if (pill_frame.origin.x < paddle_frame.origin.x + paddle_frame.size.w &&
-        pill_frame.origin.x + pill_frame.size.w > paddle_frame.origin.x) {
-      set_active_powerup((PowerupTypeEnum)(*powerup_data));
-      s_score += SCORE_POWERUP_CATCH;
+      if (pill_frame.origin.x < paddle_frame.origin.x + paddle_frame.size.w &&
+          pill_frame.origin.x + pill_frame.size.w > paddle_frame.origin.x) {
+        set_active_powerup((PowerupTypeEnum)(*powerup_data));
+        s_score += SCORE_POWERUP_CATCH;
+      }
+
+      powerup_layer_clear(powerup_layer);
     }
-
-    powerup_layer_clear(powerup_layer);
   }
+  // APP_LOG(APP_LOG_LEVEL_DEBUG, "powerup stop end %d, %p", finished ? 1 : 0, context);
 }
 
 static void drop_powerup(PowerupTypeEnum powerup, Layer *block_layer) {
@@ -954,11 +978,9 @@ static void drop_powerup(PowerupTypeEnum powerup, Layer *block_layer) {
 }
 
 static bool check_finished_level() {
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "start check level");
+  // APP_LOG(APP_LOG_LEVEL_DEBUG, "start check level");
   uint8_t num_hits;
 
-
-  
   bool finished_level = true;
   for (int i = 0; i < s_num_blocks; i++) {
     num_hits = block_layer_get_num_hits_remaining(s_block_layer_array[i]);
@@ -969,13 +991,13 @@ static bool check_finished_level() {
   }
 
   if (finished_level) {
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "start finishing level");
+    // APP_LOG(APP_LOG_LEVEL_DEBUG, "start finishing level");
     s_level++;
     s_score += SCORE_LEVEL_COMPLETE;
     layer_mark_dirty(s_status_layer);
     reset_paddle();
     load_map_from_resource(s_level);
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "end finishing level");
+    // APP_LOG(APP_LOG_LEVEL_DEBUG, "end finishing level");
   }
   return finished_level;
 }
@@ -1022,6 +1044,7 @@ static void hit_block(Layer *block_layer, PowerupTypeEnum hit_by_powerup) {
       PowerupTypeEnum powerup = (PowerupTypeEnum)random_number;
       drop_powerup(powerup, block_layer);
     }
+    // drop_powerup(WIDE, block_layer);
 
     if (block_layer_get_num_hits_remaining(block_layer) == 0) {
       s_score += SCORE_BLOCK_KILL;
@@ -1151,8 +1174,9 @@ static BallReflectionTypeEnum ball_reflection(GRect *ball_rect, int16_t *new_bal
 }
 
 static void ball_anim_stopped_handler(Animation *animation, bool finished, void *context) {
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "ball stop %d, %p", finished ? 1 : 0, context);
+  // APP_LOG(APP_LOG_LEVEL_DEBUG, "ball stop %d, %p", finished ? 1 : 0, context);
   property_animation_destroy(s_ball_animation);
+  s_ball_animation = NULL;
 
   if (!finished || s_active_powerup == FIRST_BALL_HOLD) {
     // dont restart the animation
@@ -1179,14 +1203,14 @@ static void ball_anim_stopped_handler(Animation *animation, bool finished, void 
         finished_level = check_finished_level();
         s_ball_dir_angle = new_ball_dir_angle;
       }
-      APP_LOG(APP_LOG_LEVEL_DEBUG, "return from check_finished_level finished?: %d", finished_level ? 1 : 0);
+      // APP_LOG(APP_LOG_LEVEL_DEBUG, "return from check_finished_level finished?: %d", finished_level ? 1 : 0);
       if (!finished_level) {
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "restart ball animation");
+        // APP_LOG(APP_LOG_LEVEL_DEBUG, "restart ball animation");
         ball_animation(0);
       }
     }
   }
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "exit ball stop");
+  // APP_LOG(APP_LOG_LEVEL_DEBUG, "exit ball stop");
 }
 
 static void ball_animation(uint16_t delay) {
@@ -1220,6 +1244,8 @@ static void load_map_from_buffer(uint8_t *buffer, uint16_t buffer_len) {
 
   s_num_blocks = buffer_len / 3;
   GRect block_rect = (GRect) { .origin = {0, 0}, .size = s_block_size};
+
+  s_block_layer_array = (Layer **)malloc(sizeof(Layer *) * s_num_blocks);
 
   APP_LOG(APP_LOG_LEVEL_DEBUG, "num blocks %d: buff size %d", s_num_blocks, buffer_len);
 
