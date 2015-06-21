@@ -115,7 +115,7 @@ static uint8_t s_num_laser_fire = 0;
 static GPath *s_block_shadow_path;
 static GBitmap *s_solid_block_bitmap;
 
-#define STATUS_LAYER_HEIGHT 16
+#define STATUS_LAYER_HEIGHT 12
 #define SCORE_MAX_WIDTH 5
 #define SCORE_BLOCK_KILL 1
 #define SCORE_POWERUP_CATCH 10
@@ -145,7 +145,7 @@ GPathInfo s_block_shadow_path_info = {
 
 #define s_laser_fire_frame (GRect) { .origin = {-1, -5}, .size = {3, 5}}
 
-#define PADDLE_ORIGIN_Y 144
+#define PADDLE_ORIGIN_Y 148
 
 #define P_PADDLE_KEY 0        // int for x value of origin of paddle layer
 #define P_BALL_DATA_KEY 1     // array of 3 int16_t, [x, y, angle]    2 bytes per int16_t * 3 = 6 bytes 
@@ -203,7 +203,7 @@ typedef enum {
 } BallReflectionTypeEnum;
 
 #define NUM_ENUM_POWERUPS 9     // number of powerups that can drop from block kills
-#define POWERUP_FREQ 100          // a power up will randomly appear a chance of 1/POWERUP_FREQ
+#define POWERUP_FREQ 1          // a power up will randomly appear a chance of 1/POWERUP_FREQ
 
 typedef enum {
   HOLD = 0,
@@ -466,10 +466,10 @@ static void powerup_layer_draw(Layer *layer, GContext *ctx) {
 static void status_layer_draw(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
   GRect text_bounds = bounds;
-  text_bounds.origin.x += 1;
-  text_bounds.origin.y += 4;
   text_bounds.size.w -= 2;
   text_bounds.size.h = 8;
+  text_bounds.origin.x += 1;
+  text_bounds.origin.y += (STATUS_LAYER_HEIGHT - text_bounds.size.h)/2;
 
   graphics_context_set_fill_color(ctx, GColorBlack);
   graphics_context_set_text_color(ctx, GColorWhite);
@@ -806,7 +806,7 @@ static void click_config_provider(void *context) {
 }
 
 static void hit_block(Layer *block_layer, PowerupTypeEnum hit_by_powerup);
-static void scehdule_laser_animation(Layer *laser_fire_layer);
+static void schedule_laser_animation(Layer *laser_fire_layer);
 static void load_map_from_resource(uint8_t level_id);
 
 static void laser_fire_find_end(Layer *laser_fire_layer, GRect *finish, Layer **block_layer, bool *hit) {
@@ -857,13 +857,13 @@ static void laser_fire_anim_stopped_handler(Animation *animation, bool finished,
         }
         laser_fire_layer_clear(laser_fire_layer);
       } else {
-        scehdule_laser_animation(laser_fire_layer);
+        schedule_laser_animation(laser_fire_layer);
       }
     }
   }
 }
 
-static void scehdule_laser_animation(Layer *laser_fire_layer) {
+static void schedule_laser_animation(Layer *laser_fire_layer) {
   GRect laser_fire_frame = layer_get_frame(laser_fire_layer);
   GRect finish = laser_fire_frame;
   Layer *block_layer;
@@ -909,13 +909,13 @@ static void shoot_laser() {
   layer_set_hidden(laser_fire_layer, false);
   layer_mark_dirty(laser_fire_layer);
 
-  scehdule_laser_animation(laser_fire_layer);
+  schedule_laser_animation(laser_fire_layer);
 
   s_num_laser_fire++;
 }
 
 static void powerup_anim_stopped_handler(Animation *animation, bool finished, void *context) {
-  property_animation_destroy((PropertyAnimation *)animation);
+  // property_animation_destroy((PropertyAnimation *)animation);
 
   if (finished && context != NULL) {
     Layer *powerup_layer = (Layer *)context;
