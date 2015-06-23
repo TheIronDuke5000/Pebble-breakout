@@ -78,6 +78,7 @@
 #define LASER_FIRE_TIME_PER_DIST 6
 #define BOMB_BLAST_RADIUS 20
 #define MAX_NUM_BLOCKS 120
+#define MAX_NUM_LEADERBOARD 10
 
 // #define DEBUG
 
@@ -157,6 +158,13 @@ GPathInfo s_block_shadow_path_info = {
 #define P_LIVES_KEY 20
 #define P_LEVEL_KEY 21
 #define P_SCORE_KEY 22
+#define P_LEADERBOARD_KEY 23
+
+typedef struct {
+  time_t datetime;
+  uint32_t score;
+  uint8_t level;
+} Leaderboard_Entry;
 
 #define PADDLE_WIDTH_STANDARD 30
 #define PADDLE_WIDTH_SMALL 16
@@ -166,7 +174,7 @@ GPathInfo s_block_shadow_path_info = {
 #ifdef PBL_COLOR
   uint32_t s_map_resource_array[] = {
     // RESOURCE_ID_MAP_COLOUR_TEST,
-    RESOURCE_ID_MAP_ONE_BLOCK,
+    // RESOURCE_ID_MAP_ONE_BLOCK,
     RESOURCE_ID_MAP_ARKANOID1,
     RESOURCE_ID_MAP_FACE,
     RESOURCE_ID_MAP_BALL,
@@ -176,13 +184,8 @@ GPathInfo s_block_shadow_path_info = {
   };
 #else
   uint32_t s_map_resource_array[] = {
-    RESOURCE_ID_MAP_ONE_BLOCK,
+    // RESOURCE_ID_MAP_ONE_BLOCK,
     RESOURCE_ID_MAP_FACE,
-    RESOURCE_ID_MAP_ONE_BLOCK,
-    RESOURCE_ID_MAP_ONE_BLOCK,
-    RESOURCE_ID_MAP_ONE_BLOCK,
-    RESOURCE_ID_MAP_ONE_BLOCK2,
-    RESOURCE_ID_MAP_ONE_BLOCK,
     RESOURCE_ID_MAP_BALL,
     RESOURCE_ID_MAP_RAINBOW,
     RESOURCE_ID_MAP_CLOCK,
@@ -203,7 +206,7 @@ typedef enum {
 } BallReflectionTypeEnum;
 
 #define NUM_ENUM_POWERUPS 9     // number of powerups that can drop from block kills
-#define POWERUP_FREQ 1          // a power up will randomly appear a chance of 1/POWERUP_FREQ
+#define POWERUP_FREQ 1000          // a power up will randomly appear a chance of 1/POWERUP_FREQ
 
 typedef enum {
   HOLD = 0,
@@ -446,21 +449,26 @@ static void paddle_layer_draw(Layer *layer, GContext *ctx) {
 
 static void powerup_layer_draw(Layer *layer, GContext *ctx) {
   uint8_t *layer_data = layer_get_data(layer);
-  GRect bounds = layer_get_bounds(layer);
+  if (*layer_data != NONE) {
+    layer_set_hidden(layer, false);
+    GRect bounds = layer_get_bounds(layer);
 
-  #ifdef PBL_COLOR
-    GColor8 powerup_color = s_powerup_colors(*layer_data);
-  #else
-    GColor powerup_color = GColorBlack;
-  #endif
+    #ifdef PBL_COLOR
+      GColor8 powerup_color = s_powerup_colors(*layer_data);
+    #else
+      GColor powerup_color = GColorBlack;
+    #endif
 
-  graphics_context_set_fill_color(ctx, powerup_color);
-  graphics_context_set_text_color(ctx, powerup_color);
+    graphics_context_set_fill_color(ctx, powerup_color);
+    graphics_context_set_text_color(ctx, powerup_color);
 
-  graphics_draw_text(ctx, s_powerup_names[*layer_data], s_arcade_font_8,
-    s_powerup_text_frame, GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
+    graphics_draw_text(ctx, s_powerup_names[*layer_data], s_arcade_font_8,
+      s_powerup_text_frame, GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
 
-  graphics_fill_rect(ctx, s_powerup_pill_frame, s_powerup_pill_frame.size.h/2, GCornersAll);
+    graphics_fill_rect(ctx, s_powerup_pill_frame, s_powerup_pill_frame.size.h/2, GCornersAll);
+  } else {
+    layer_set_hidden(layer, true);
+  }
 }
 
 static void status_layer_draw(Layer *layer, GContext *ctx) {
@@ -536,8 +544,11 @@ static void powerup_array_destroy() {
 }
 
 static void powerup_array_clear() {
+  uint8_t *layer_data;
   for (uint16_t i = 0; i < MAX_NUM_POWERUP_DROPS; i++) {
     layer_set_hidden(s_powerup_layer_array[i], true);
+    layer_data = layer_get_data(s_powerup_layer_array[i]);
+    *layer_data = (uint8_t)NONE;
   }
   s_num_powerup_drops = 0;
 }
@@ -650,6 +661,10 @@ static void shoot_laser();
 static void reset_paddle();
 static void ball_animation(uint16_t delay);
 static void release_ball_from_hold();
+static void persist_leaderboard_data();
+static void hit_block(Layer *block_layer, PowerupTypeEnum hit_by_powerup);
+static void schedule_laser_animation(Layer *laser_fire_layer);
+static void load_map_from_resource(uint8_t level_id);
 
 static void set_active_powerup(PowerupTypeEnum powerup_type) {
   if (powerup_type == LIFE) {
@@ -805,10 +820,6 @@ static void click_config_provider(void *context) {
   window_single_repeating_click_subscribe(BUTTON_ID_DOWN, 30, btn_dir_rep_click_handler);
 }
 
-static void hit_block(Layer *block_layer, PowerupTypeEnum hit_by_powerup);
-static void schedule_laser_animation(Layer *laser_fire_layer);
-static void load_map_from_resource(uint8_t level_id);
-
 static void laser_fire_find_end(Layer *laser_fire_layer, GRect *finish, Layer **block_layer, bool *hit) {
   GRect laser_fire_frame = layer_get_frame(laser_fire_layer);
   *finish = laser_fire_frame;
@@ -915,11 +926,12 @@ static void shoot_laser() {
 }
 
 static void powerup_anim_stopped_handler(Animation *animation, bool finished, void *context) {
-  // property_animation_destroy((PropertyAnimation *)animation);
+  property_animation_destroy((PropertyAnimation *)animation);
 
   if (finished && context != NULL) {
     Layer *powerup_layer = (Layer *)context;
-    if (!layer_get_hidden(powerup_layer)) {
+    uint8_t *layer_data = layer_get_data(powerup_layer);
+    if (!layer_get_hidden(powerup_layer) && *layer_data != (uint8_t)NONE) {
       // APP_LOG(APP_LOG_LEVEL_DEBUG, "powerup stop mid %d, %p", finished ? 1 : 0, context);
       uint8_t *powerup_data = layer_get_data(powerup_layer);
       GRect powerup_frame = layer_get_frame(powerup_layer);
@@ -934,9 +946,8 @@ static void powerup_anim_stopped_handler(Animation *animation, bool finished, vo
         set_active_powerup((PowerupTypeEnum)(*powerup_data));
         s_score += SCORE_POWERUP_CATCH;
       }
-
-      powerup_layer_clear(powerup_layer);
     }
+    powerup_layer_clear(powerup_layer);
   }
   // APP_LOG(APP_LOG_LEVEL_DEBUG, "powerup stop end %d, %p", finished ? 1 : 0, context);
 }
@@ -1043,8 +1054,9 @@ static void hit_block(Layer *block_layer, PowerupTypeEnum hit_by_powerup) {
     if (random_number < NUM_ENUM_POWERUPS && s_num_powerup_drops < MAX_NUM_POWERUP_DROPS) {
       PowerupTypeEnum powerup = (PowerupTypeEnum)random_number;
       drop_powerup(powerup, block_layer);
+    } else {
+      drop_powerup(NONE, block_layer);
     }
-    // drop_powerup(WIDE, block_layer);
 
     if (block_layer_get_num_hits_remaining(block_layer) == 0) {
       s_score += SCORE_BLOCK_KILL;
@@ -1066,6 +1078,11 @@ static void hold_ball() {
   aim_rect.origin.x = ball_rect.origin.x - 13;
   layer_set_frame(s_aim_layer, aim_rect);
   layer_set_hidden(s_aim_layer, false);
+}
+
+static void death() {
+  persist_leaderboard_data();
+  window_stack_pop(true);
 }
 
 static BallReflectionTypeEnum ball_reflection(GRect *ball_rect, int16_t *new_ball_dir_angle, bool *hit) {
@@ -1193,7 +1210,7 @@ static void ball_anim_stopped_handler(Animation *animation, bool finished, void 
       if (s_num_lives > 0) {
         reset_paddle();
       } else {
-        window_stack_pop(true);
+        death();
       }
     } else if (reflect_type == PADDLE_HIT && s_active_powerup == HOLD) {
       hold_ball();
@@ -1412,6 +1429,42 @@ static void persist_resume_data() {
   }
 }
 
+static void persist_leaderboard_data() {
+  Leaderboard_Entry leaderboard_array[MAX_NUM_LEADERBOARD];
+  if (persist_exists(P_LEADERBOARD_KEY)) {
+    persist_read_data(P_LEADERBOARD_KEY, leaderboard_array, sizeof(Leaderboard_Entry) * MAX_NUM_LEADERBOARD);
+  }
+
+  int8_t insert_index = -1;
+  for (uint8_t i = 0; i < MAX_NUM_LEADERBOARD; i++) {
+    if (leaderboard_array[i].score < s_score) {
+      insert_index = i;
+      break;
+    }
+  }
+
+  if (insert_index != -1) {
+    for (uint8_t i = MAX_NUM_LEADERBOARD - 1; i > insert_index; i--) {
+      leaderboard_array[i].score = leaderboard_array[i-1].score;
+      leaderboard_array[i].level = leaderboard_array[i-1].level;
+      leaderboard_array[i].datetime = leaderboard_array[i-1].datetime;
+    }
+
+    leaderboard_array[insert_index].score = s_score;
+    leaderboard_array[insert_index].level = s_level;
+    leaderboard_array[insert_index].datetime = time(NULL);
+
+    // for (uint8_t i = 0; i < MAX_NUM_LEADERBOARD; i++) {
+    //   APP_LOG(APP_LOG_LEVEL_DEBUG, "leader score %d, level %d, time %d", 
+    //           (int) (leaderboard_array[i].score), 
+    //           (int) (leaderboard_array[i].level), 
+    //           (int) (leaderboard_array[i].datetime));
+    // }
+
+    persist_write_data(P_LEADERBOARD_KEY, leaderboard_array, sizeof(Leaderboard_Entry) * MAX_NUM_LEADERBOARD);
+  }
+}
+
 static void game_window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
@@ -1481,17 +1534,11 @@ static void game_window_load(Window *window) {
   }
 
 
-  char buffer[8];
-  clock_copy_time_string(buffer, 8);
-  for (int i = 0; i < 8; i++) {
-    if (buffer[i] == ':') {
-      srand(buffer[i+2]);
-      // srand creates a 28B mem leak.
-      // this mem leak does not increase with repeated calling of the srand function
-      // this is a known pebble bug and not an issue
-      break;
-    }
-  }
+  time_t current_time = time(NULL);
+  srand((unsigned int) current_time);
+  // srand creates a 28B mem leak.
+  // this mem leak does not increase with repeated calling of the srand function
+  // this is a known pebble bug and not an issue
 }
 
 static void game_window_unload(Window *window) {
@@ -1540,6 +1587,7 @@ static void menu_window_load(Window *window) {
 
   s_menu_items[1].title = "New Game";
   s_menu_items[1].callback = menu_new_game_callback;
+
   s_menu_section.num_items = 2;
   s_menu_section.items = s_menu_items;
 
