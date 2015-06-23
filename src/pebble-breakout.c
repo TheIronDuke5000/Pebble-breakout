@@ -87,11 +87,21 @@ static TextLayer *s_text_layer;
 static char s_text_layer_text[20];
 #endif
 
+typedef struct {
+  time_t datetime;
+  uint32_t score;
+  uint8_t level;
+} Leaderboard_Entry;
+
+static Window *s_leaderboard_window;
+static ScrollLayer *s_leaderboard_scroll_layer;
+static TextLayer *s_leaderboard_title_layer;
+static Layer *s_leaderboard_layer_array[MAX_NUM_LEADERBOARD];
 static Window *s_menu_window;
 static SimpleMenuLayer *s_menu_layer;
 static Layer *s_status_layer;
 static SimpleMenuSection s_menu_section;
-static SimpleMenuItem s_menu_items[2];
+static SimpleMenuItem s_menu_items[3];
 static Window *s_game_window;
 static Layer *s_main_layer;
 static Layer *s_ball_layer;
@@ -110,6 +120,7 @@ static uint8_t s_num_lives;
 static uint8_t s_level;
 static uint32_t s_score;
 static GFont s_arcade_font_8;
+static GFont s_arcade_font_16;
 static Layer *s_laser_fire_layer_array[MAX_NUM_LASER_FIRE];
 static PropertyAnimation *s_laser_fire_animation_array[MAX_NUM_LASER_FIRE];
 static uint8_t s_num_laser_fire = 0;
@@ -138,13 +149,42 @@ GPathInfo s_block_shadow_path_info = {
   }
 };
 
-#define s_powerup_frame  (GRect) { .origin = {(-48+16-6)/2, 0}, .size = {48, 12} }
+static GRect s_powerup_frame = {
+  .origin = {(-48+16-6)/2, 0},
+  .size = {48, 12}
+};
 
-#define s_powerup_text_frame (GRect) { .origin = {0, 0}, .size = {48, 8} }
+static GRect s_powerup_text_frame = {
+  .origin = {0, 0},
+  .size = {48, 8}
+};
 
-#define s_powerup_pill_frame (GRect) { .origin = {24, 8}, .size = {6, 3} }
+static GRect s_powerup_pill_frame = {
+  .origin = {24, 8},
+  .size = {6, 3}
+};
 
-#define s_laser_fire_frame (GRect) { .origin = {-1, -5}, .size = {3, 5}}
+static GRect s_laser_fire_frame = {
+  .origin = {-1, -5},
+  .size = {3, 5}
+};
+
+#define LEADERBOARD_ENTRY_HEIGHT 32
+
+static GRect s_leaderboard_score_rect = {
+  .origin = {4, 3},
+  .size = {144, 20}
+};
+
+static GRect s_leaderboard_level_rect = {
+  .origin = {4, 22},
+  .size = {144, 10}
+};
+
+static GRect s_leaderboard_datetime_rect = {
+  .origin = {4, 22},
+  .size = {144, 10}
+};
 
 #define PADDLE_ORIGIN_Y 148
 
@@ -159,12 +199,6 @@ GPathInfo s_block_shadow_path_info = {
 #define P_LEVEL_KEY 21
 #define P_SCORE_KEY 22
 #define P_LEADERBOARD_KEY 23
-
-typedef struct {
-  time_t datetime;
-  uint32_t score;
-  uint8_t level;
-} Leaderboard_Entry;
 
 #define PADDLE_WIDTH_STANDARD 30
 #define PADDLE_WIDTH_SMALL 16
@@ -206,7 +240,7 @@ typedef enum {
 } BallReflectionTypeEnum;
 
 #define NUM_ENUM_POWERUPS 9     // number of powerups that can drop from block kills
-#define POWERUP_FREQ 1000          // a power up will randomly appear a chance of 1/POWERUP_FREQ
+#define POWERUP_FREQ 5          // a power up will randomly appear a chance of 1/POWERUP_FREQ
 
 typedef enum {
   HOLD = 0,
@@ -332,6 +366,17 @@ static int8_t sign(int32_t a) {
     return -1;
   }
   return 0;
+}
+
+static char * get_score_string(char *buffer, uint8_t buffer_len, uint32_t score) {
+  char *buff_start = buffer + SCORE_MAX_WIDTH;
+  uint8_t num_chars = snprintf(buff_start, buffer_len - SCORE_MAX_WIDTH, "%lu", (uint32_t)score);
+  while (num_chars < SCORE_MAX_WIDTH) {
+    buff_start--;
+    buff_start[0] = '0';
+    num_chars++;
+  }
+  return buff_start;
 }
 
 static GPoint get_ball_dir_point() {
@@ -495,13 +540,7 @@ static void status_layer_draw(Layer *layer, GContext *ctx) {
   graphics_draw_text(ctx, buffer, s_arcade_font_8,
     text_bounds, GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
 
-  char *buff_start = buffer + SCORE_MAX_WIDTH;
-  uint8_t num_chars = snprintf(buff_start, buffer_len - SCORE_MAX_WIDTH, "%lu", (uint32_t)s_score);
-  while (num_chars < SCORE_MAX_WIDTH) {
-    buff_start--;
-    buff_start[0] = '0';
-    num_chars++;
-  }
+  char * buff_start = get_score_string(buffer, buffer_len, s_score);
   graphics_draw_text(ctx, buff_start, s_arcade_font_8,
     text_bounds, GTextOverflowModeWordWrap, GTextAlignmentRight, NULL);
 }
@@ -517,6 +556,38 @@ static void laser_fire_layer_draw(Layer *layer, GContext *ctx) {
 
   graphics_context_set_fill_color(ctx, fire_color);
   graphics_fill_rect(ctx, bounds, bounds.size.h, GCornersAll);
+}
+
+static void leaderboard_entry_layer_draw(Layer *layer, GContext *ctx) {
+  GRect bounds = layer_get_bounds(layer);
+  s_leaderboard_score_rect.size.w = bounds.size.w - 8;
+  s_leaderboard_level_rect.size.w = bounds.size.w - 8;
+  s_leaderboard_datetime_rect.size.w = bounds.size.w - 8;
+
+  Leaderboard_Entry *entry = layer_get_data(layer);
+
+  graphics_context_set_text_color(ctx, GColorBlack);
+
+  uint8_t buffer_len = 20;
+  char buffer[buffer_len];
+  char * buff_start = get_score_string(buffer, buffer_len, entry->score);
+  graphics_draw_text(ctx, buff_start, s_arcade_font_16,
+    s_leaderboard_score_rect, GTextOverflowModeWordWrap, GTextAlignmentLeft, NULL);
+
+  snprintf(buffer, buffer_len, "LVL%d", entry->level + 1);
+  graphics_draw_text(ctx, buffer, s_arcade_font_8,
+    s_leaderboard_level_rect, GTextOverflowModeWordWrap, GTextAlignmentLeft, NULL);
+
+
+  struct tm * tm_local = localtime(&(entry->datetime));
+  strftime(buffer, buffer_len, "%b%e %H:%M", tm_local);
+  graphics_draw_text(ctx, buffer, s_arcade_font_8,
+    s_leaderboard_datetime_rect, GTextOverflowModeWordWrap, GTextAlignmentRight, NULL);
+
+  GPoint p0 = {0, bounds.size.h-1};
+  GPoint p1 = {bounds.size.w, bounds.size.h-1};
+  graphics_context_set_stroke_color(ctx, GColorBlack);
+  graphics_draw_line(ctx, p0, p1);
 }
 
 static void block_array_destroy() {
@@ -849,7 +920,7 @@ static void laser_fire_find_end(Layer *laser_fire_layer, GRect *finish, Layer **
 }
 
 static void laser_fire_anim_stopped_handler(Animation *animation, bool finished, void *context) {
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "laser stop %d, %p", finished ? 1 : 0, context);
+  // APP_LOG(APP_LOG_LEVEL_DEBUG, "laser stop %d, %p", finished ? 1 : 0, context);
   property_animation_destroy((PropertyAnimation *)animation);
 
   if (context != NULL && finished) {
@@ -1050,12 +1121,14 @@ static void hit_block(Layer *block_layer, PowerupTypeEnum hit_by_powerup) {
       }
     }
 
-    uint16_t random_number = rand() % (NUM_ENUM_POWERUPS*POWERUP_FREQ);
-    if (random_number < NUM_ENUM_POWERUPS && s_num_powerup_drops < MAX_NUM_POWERUP_DROPS) {
-      PowerupTypeEnum powerup = (PowerupTypeEnum)random_number;
-      drop_powerup(powerup, block_layer);
-    } else {
-      drop_powerup(NONE, block_layer);
+    if (s_num_powerup_drops < MAX_NUM_POWERUP_DROPS) {
+      uint16_t random_number = rand() % (NUM_ENUM_POWERUPS*POWERUP_FREQ);
+      if (random_number < NUM_ENUM_POWERUPS) {
+        PowerupTypeEnum powerup = (PowerupTypeEnum)random_number;
+        drop_powerup(powerup, block_layer);
+      } else {
+        drop_powerup(PLASMA, block_layer);
+      }
     }
 
     if (block_layer_get_num_hits_remaining(block_layer) == 0) {
@@ -1264,7 +1337,7 @@ static void load_map_from_buffer(uint8_t *buffer, uint16_t buffer_len) {
 
   s_block_layer_array = (Layer **)malloc(sizeof(Layer *) * s_num_blocks);
 
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "num blocks %d: buff size %d", s_num_blocks, buffer_len);
+  // APP_LOG(APP_LOG_LEVEL_DEBUG, "num blocks %d: buff size %d", s_num_blocks, buffer_len);
 
   // create blocks
   uint16_t i;
@@ -1547,7 +1620,7 @@ static void game_window_unload(Window *window) {
   persist_resume_data();
 
   #ifdef DEBUG
-    layer_destroy((Layer *)s_text_layer);
+    text_layer_destroy(s_text_layer);
   #endif
   layer_destroy(s_ball_layer);
   layer_destroy(s_paddle_layer);
@@ -1578,6 +1651,10 @@ static void menu_resume_callback(int index, void *context) {
   }
 }
 
+static void menu_leaderboard_callback(int index, void *context) {
+  window_stack_push(s_leaderboard_window, true);
+}
+
 static void menu_window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
@@ -1588,7 +1665,10 @@ static void menu_window_load(Window *window) {
   s_menu_items[1].title = "New Game";
   s_menu_items[1].callback = menu_new_game_callback;
 
-  s_menu_section.num_items = 2;
+  s_menu_items[2].title = "High Scores";
+  s_menu_items[2].callback = menu_leaderboard_callback;
+
+  s_menu_section.num_items = 3;
   s_menu_section.items = s_menu_items;
 
   s_menu_layer = simple_menu_layer_create((GRect) {
@@ -1603,16 +1683,70 @@ static void menu_window_unload(Window *window) {
   simple_menu_layer_destroy(s_menu_layer);
 }
 
+static void leaderboard_window_load(Window *window) {
+  Layer *window_layer = window_get_root_layer(window);
+  GRect bounds = layer_get_bounds(window_layer);
+  GRect item_frame = bounds;
+  item_frame.size.h = LEADERBOARD_ENTRY_HEIGHT;
+
+  GRect title_rect = bounds;
+  title_rect.size.h = 18;
+  s_leaderboard_title_layer = text_layer_create(title_rect);
+  text_layer_set_text(s_leaderboard_title_layer, "HI SCORES");
+  text_layer_set_background_color(s_leaderboard_title_layer, GColorBlack);
+  text_layer_set_text_color(s_leaderboard_title_layer, GColorWhite);
+  text_layer_set_font(s_leaderboard_title_layer, s_arcade_font_16);
+  text_layer_set_text_alignment(s_leaderboard_title_layer, GTextAlignmentCenter);
+  layer_add_child(window_layer, (Layer *)s_leaderboard_title_layer);
+
+  GRect scroll_rect = bounds;
+  scroll_rect.size.h -= title_rect.size.h;
+  scroll_rect.origin.y +=title_rect.size.h;
+  s_leaderboard_scroll_layer = scroll_layer_create(scroll_rect);
+  scroll_layer_set_click_config_onto_window(s_leaderboard_scroll_layer, window);
+  layer_add_child(window_layer, (Layer *)s_leaderboard_scroll_layer);
+
+
+  Leaderboard_Entry leaderboard_entry_array[MAX_NUM_LEADERBOARD];
+  if (persist_exists(P_LEADERBOARD_KEY)) {
+    persist_read_data(P_LEADERBOARD_KEY, leaderboard_entry_array, sizeof(Leaderboard_Entry) * MAX_NUM_LEADERBOARD);
+  }
+
+  Leaderboard_Entry *layer_entry;
+  for (uint8_t i = 0; i < MAX_NUM_LEADERBOARD; i++) {
+    s_leaderboard_layer_array[i] = layer_create_with_data(item_frame, sizeof(Leaderboard_Entry));
+    layer_entry = layer_get_data(s_leaderboard_layer_array[i]);
+    layer_entry->score = leaderboard_entry_array[i].score;
+    layer_entry->level = leaderboard_entry_array[i].level;
+    layer_entry->datetime = leaderboard_entry_array[i].datetime;
+    layer_set_update_proc(s_leaderboard_layer_array[i], leaderboard_entry_layer_draw);
+
+    scroll_layer_add_child(s_leaderboard_scroll_layer, s_leaderboard_layer_array[i]);
+    item_frame.origin.y += LEADERBOARD_ENTRY_HEIGHT;
+  }
+  bounds.size.h = item_frame.origin.y;
+  scroll_layer_set_content_size(s_leaderboard_scroll_layer, bounds.size);
+}
+
+static void leaderboard_window_unload(Window *window) {
+  for (uint8_t i = 0; i < MAX_NUM_LEADERBOARD; i++) {
+    layer_destroy(s_leaderboard_layer_array[i]);
+  }
+  text_layer_destroy(s_leaderboard_title_layer);
+  scroll_layer_destroy(s_leaderboard_scroll_layer);
+}
+
 static void init(void) {
   s_menu_window = window_create();
-
   s_game_window = window_create();
+  s_leaderboard_window = window_create();
 
   #ifdef PBL_PLATFORM_APLITE
     window_set_fullscreen(s_game_window, true);
   #endif
 
   s_arcade_font_8 = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_ARCADE_FONT_8));
+  s_arcade_font_16 = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_ARCADE_FONT_16));
 
   window_set_click_config_provider(s_game_window, click_config_provider);
   window_set_window_handlers(s_game_window, (WindowHandlers) {
@@ -1625,6 +1759,11 @@ static void init(void) {
     .unload = menu_window_unload,
   });
 
+  window_set_window_handlers(s_leaderboard_window, (WindowHandlers) {
+    .load = leaderboard_window_load,
+    .unload = leaderboard_window_unload,
+  });
+
   const bool animated = true;
   window_stack_push(s_menu_window, animated);
 }
@@ -1634,10 +1773,12 @@ static void deinit(void) {
   animation_unschedule_all();
 
   fonts_unload_custom_font(s_arcade_font_8);
+  fonts_unload_custom_font(s_arcade_font_16);
 
   // Destroy main Window
   window_destroy(s_game_window);
   window_destroy(s_menu_window);
+  window_destroy(s_leaderboard_window);
 }
 
 int main(void) {

@@ -21,6 +21,12 @@
         "type": "font"
       },
       {
+        "name": "ARCADE_FONT_16",
+        "file": "ARCADE_FONT_TTF.ttf",
+        "characterRegex": "[\t-~]",
+        "type": "font"
+      },
+      {
         "name": "INDESTRUCTIBLE_BLOCK_PNG",
         "file": "indestructible_brick.png",
         "type": "png"
