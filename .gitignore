@@ -36,3 +36,4 @@ build/
 .lock-waf_linux2_build
 .tag*
 
+.fuse_hidden*
