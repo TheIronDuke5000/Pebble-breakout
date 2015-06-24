@@ -1,7 +1,7 @@
 {
   "uuid": "c3401829-7aa5-464d-926d-6c4c5ce6db1d",
-  "shortName": "Pebble Pulvizer",
-  "longName": "Pebble Pulvizer",
+  "shortName": "BALL BUSTER",
+  "longName": "BALL BUSTER",
   "companyName": "Iron Duke Industries",
   "versionLabel": "1.0",
   "sdkVersion": "3",
@@ -25,6 +25,11 @@
         "file": "ARCADE_FONT_TTF.ttf",
         "characterRegex": "[\t-~]",
         "type": "font"
+      },
+      {
+        "name": "BALL_LOGO_PNG",
+        "file": "ball_logo~48.png",
+        "type": "png"
       },
       {
         "name": "INDESTRUCTIBLE_BLOCK_PNG",

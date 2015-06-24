@@ -98,11 +98,12 @@ static ScrollLayer *s_leaderboard_scroll_layer;
 static TextLayer *s_leaderboard_title_layer;
 static Layer *s_leaderboard_layer_array[MAX_NUM_LEADERBOARD];
 static Window *s_menu_window;
-static SimpleMenuLayer *s_menu_layer;
-static Layer *s_status_layer;
-static SimpleMenuSection s_menu_section;
-static SimpleMenuItem s_menu_items[3];
+static MenuLayer *s_menu_layer;
+static TextLayer *s_menu_title_layer;
+static BitmapLayer *s_menu_bitmap_layer;
+static GBitmap *s_logo_bitmap;
 static Window *s_game_window;
+static Layer *s_status_layer;
 static Layer *s_main_layer;
 static Layer *s_ball_layer;
 static int16_t s_ball_dir_angle;
@@ -186,6 +187,8 @@ static GRect s_leaderboard_datetime_rect = {
   .size = {144, 10}
 };
 
+#define MENU_CELL_HEIGHT 20
+
 #define PADDLE_ORIGIN_Y 148
 
 #define P_PADDLE_KEY 0        // int for x value of origin of paddle layer
@@ -240,7 +243,7 @@ typedef enum {
 } BallReflectionTypeEnum;
 
 #define NUM_ENUM_POWERUPS 9     // number of powerups that can drop from block kills
-#define POWERUP_FREQ 5          // a power up will randomly appear a chance of 1/POWERUP_FREQ
+#define POWERUP_FREQ 3          // a power up will randomly appear a chance of 1/POWERUP_FREQ
 
 typedef enum {
   HOLD = 0,
@@ -588,6 +591,26 @@ static void leaderboard_entry_layer_draw(Layer *layer, GContext *ctx) {
   GPoint p1 = {bounds.size.w, bounds.size.h-1};
   graphics_context_set_stroke_color(ctx, GColorBlack);
   graphics_draw_line(ctx, p0, p1);
+}
+
+static void menu_draw_row(GContext *ctx, const Layer *cell_layer, MenuIndex *cell_index, void *callback_context) {
+  GRect bounds = layer_get_bounds(cell_layer);
+  GRect text_bounds = bounds;
+  text_bounds.origin.y += 2;
+  text_bounds.size.h -= 2;
+  graphics_context_set_text_color(ctx, GColorBlack);
+
+  uint8_t buffer_len = 20;
+  char buffer[buffer_len];
+  if (cell_index->row == 0) {
+    snprintf(buffer, buffer_len, "RESUME");
+  } else if (cell_index->row == 1) {
+    snprintf(buffer, buffer_len, "NEW GAME");
+  } else if (cell_index->row == 2) {
+    snprintf(buffer, buffer_len, "HI SCORES");
+  }
+  graphics_draw_text(ctx, buffer, s_arcade_font_16,
+    text_bounds, GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
 }
 
 static void block_array_destroy() {
@@ -1127,7 +1150,7 @@ static void hit_block(Layer *block_layer, PowerupTypeEnum hit_by_powerup) {
         PowerupTypeEnum powerup = (PowerupTypeEnum)random_number;
         drop_powerup(powerup, block_layer);
       } else {
-        drop_powerup(PLASMA, block_layer);
+        drop_powerup(NONE, block_layer);
       }
     }
 
@@ -1636,51 +1659,85 @@ static void game_window_unload(Window *window) {
   layer_destroy(s_main_layer);
 }
 
-static void menu_new_game_callback(int index, void *context) {
-  s_is_resume = false;
-  window_stack_push(s_game_window, true);
-  simple_menu_layer_set_selected_index(s_menu_layer, 0, false);
-}
-
-static void menu_resume_callback(int index, void *context) {
-  if (persist_exists(P_BLOCKS_DATA_START_KEY)) {
-    s_is_resume = true;
+static void menu_select(struct MenuLayer *menu_layer, MenuIndex *cell_index, void *callback_context) {
+  if (cell_index->row == 0) {
+    // resume
+    if (persist_exists(P_BLOCKS_DATA_START_KEY)) {
+      s_is_resume = true;
+      window_stack_push(s_game_window, true);
+    } else {
+      menu_layer_set_selected_index(s_menu_layer, (MenuIndex) {.section = 0, .row = 1}, MenuRowAlignCenter, false);
+    }
+  } else if (cell_index->row == 1) {
+    // new game
+    s_is_resume = false;
     window_stack_push(s_game_window, true);
-  } else {
-    simple_menu_layer_set_selected_index(s_menu_layer, 1, false);
+    menu_layer_set_selected_index(s_menu_layer, (MenuIndex) {.section = 0, .row = 0}, MenuRowAlignCenter, false);
+  } else if (cell_index->row == 2) {
+    // leaderboard
+    window_stack_push(s_leaderboard_window, true);
   }
 }
 
-static void menu_leaderboard_callback(int index, void *context) {
-  window_stack_push(s_leaderboard_window, true);
+static uint16_t menu_layer_get_num_rows(struct MenuLayer *menu_layer, uint16_t section_index, void *callback_context) {
+  if (section_index == 0) {
+    return 3;
+  }
+  return 0;
+}
+
+static int16_t menu_layer_get_cell_height(struct MenuLayer *menu_layer, MenuIndex *cell_index, void *callback_context) {
+  return MENU_CELL_HEIGHT;
 }
 
 static void menu_window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
 
-  s_menu_items[0].title = "Resume";
-  s_menu_items[0].callback = menu_resume_callback;
+  GRect title_rect = bounds;
+  title_rect.origin.y = 4;
+  title_rect.size.h = 36;
+  s_menu_title_layer = text_layer_create(title_rect);
+  text_layer_set_text(s_menu_title_layer, "BALL BUSTER");
+  text_layer_set_background_color(s_menu_title_layer, GColorWhite);
+  text_layer_set_text_color(s_menu_title_layer, GColorBlack);
+  text_layer_set_font(s_menu_title_layer, s_arcade_font_16);
+  text_layer_set_text_alignment(s_menu_title_layer, GTextAlignmentCenter);
+  layer_add_child(window_layer, (Layer *)s_menu_title_layer);
 
-  s_menu_items[1].title = "New Game";
-  s_menu_items[1].callback = menu_new_game_callback;
+  GRect bitmap_rect = bounds;
+  bitmap_rect.origin.y = title_rect.size.h + title_rect.origin.y;
+  bitmap_rect.size.h = 48;
+  s_menu_bitmap_layer = bitmap_layer_create(bitmap_rect);
+  s_logo_bitmap = gbitmap_create_with_resource(RESOURCE_ID_BALL_LOGO_PNG);
+  bitmap_layer_set_bitmap(s_menu_bitmap_layer, s_logo_bitmap);
+  bitmap_layer_set_alignment(s_menu_bitmap_layer, GAlignCenter);
+  layer_add_child(window_layer, (Layer *)s_menu_bitmap_layer);
 
-  s_menu_items[2].title = "High Scores";
-  s_menu_items[2].callback = menu_leaderboard_callback;
-
-  s_menu_section.num_items = 3;
-  s_menu_section.items = s_menu_items;
-
-  s_menu_layer = simple_menu_layer_create((GRect) {
-    .origin = {0, 0},
-    .size = bounds.size
-  }, window, &s_menu_section, 1, NULL);
+  s_menu_layer = menu_layer_create((GRect) {
+    .origin = {0, bounds.size.h - (MENU_CELL_HEIGHT*3 + 2)},
+    .size = {bounds.size.w, MENU_CELL_HEIGHT*3 + 2}
+  });
+  menu_layer_set_click_config_onto_window(s_menu_layer, window);
+  menu_layer_set_callbacks(s_menu_layer, NULL, (MenuLayerCallbacks) {
+    .get_num_sections = NULL,
+    .get_num_rows = menu_layer_get_num_rows,
+    .get_cell_height = menu_layer_get_cell_height,
+    .get_header_height = NULL,
+    .draw_row = menu_draw_row,
+    .draw_header = NULL,
+    .select_click = menu_select,
+    .select_long_click = NULL
+  });
 
   layer_add_child(window_layer, (Layer *)s_menu_layer);
 }
 
 static void menu_window_unload(Window *window) {
-  simple_menu_layer_destroy(s_menu_layer);
+  text_layer_destroy(s_menu_title_layer);
+  gbitmap_destroy(s_logo_bitmap);
+  bitmap_layer_destroy(s_menu_bitmap_layer);
+  menu_layer_destroy(s_menu_layer);
 }
 
 static void leaderboard_window_load(Window *window) {
