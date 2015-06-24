@@ -1526,7 +1526,12 @@ static void persist_resume_data() {
 }
 
 static void persist_leaderboard_data() {
-  Leaderboard_Entry leaderboard_array[MAX_NUM_LEADERBOARD];
+  Leaderboard_Entry default_entry;
+  default_entry.score = 0;
+  default_entry.level = 0;
+  default_entry.datetime = 0;
+
+  Leaderboard_Entry leaderboard_array[MAX_NUM_LEADERBOARD] = {default_entry};
   if (persist_exists(P_LEADERBOARD_KEY)) {
     persist_read_data(P_LEADERBOARD_KEY, leaderboard_array, sizeof(Leaderboard_Entry) * MAX_NUM_LEADERBOARD);
   }
@@ -1763,9 +1768,14 @@ static void leaderboard_window_load(Window *window) {
   scroll_layer_set_click_config_onto_window(s_leaderboard_scroll_layer, window);
   layer_add_child(window_layer, (Layer *)s_leaderboard_scroll_layer);
 
+  Leaderboard_Entry default_entry;
+  default_entry.score = 0;
+  default_entry.level = 0;
+  default_entry.datetime = 0;
 
-  Leaderboard_Entry leaderboard_entry_array[MAX_NUM_LEADERBOARD];
+  Leaderboard_Entry leaderboard_entry_array[MAX_NUM_LEADERBOARD] = {default_entry};
   if (persist_exists(P_LEADERBOARD_KEY)) {
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "persist exists");
     persist_read_data(P_LEADERBOARD_KEY, leaderboard_entry_array, sizeof(Leaderboard_Entry) * MAX_NUM_LEADERBOARD);
   }
 
