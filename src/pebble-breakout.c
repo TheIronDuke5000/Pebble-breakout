@@ -73,7 +73,7 @@
 #define MAX_NUM_LASER_FIRE 10     // maximum number of laser fire in the air
 #define PADDLE_MAX_SPEED 8
 #define HOLD_AIM_INC TRIG_MAX_ANGLE/0x28
-#define BALL_TIME_PER_DIST 12
+#define BALL_TIME_PER_DIST 18
 #define POWERUP_TIME_PER_DIST 50
 #define LASER_FIRE_TIME_PER_DIST 6
 #define BOMB_BLAST_RADIUS 20
@@ -372,6 +372,39 @@ static int8_t sign(int32_t a) {
     return -1;
   }
   return 0;
+}
+
+
+// http://www.flipcode.com/archives/Fast_Approximate_Distance_Functions.shtml
+// Fast Approximate Distance Functions
+// by Rafael Baptista (27 June 2003)
+uint16_t approx_distance(int16_t dx, int16_t dy) {
+  uint32_t min, max, approx;
+
+  if (dx < 0) {
+    dx = -dx;
+  }
+  if (dy < 0) {
+    dy = -dy;
+  }
+
+  if (dx < dy) {
+    min = dx;
+    max = dy;
+  } else {
+    min = dy;
+    max = dx;
+  }
+
+  approx = (max * 1007) + (min * 441);
+  if ( max < ( min << 4 ))
+    approx -= (max * 40);
+  // add 512 for proper rounding
+  return ((approx + 512) >> 10);
+}
+
+uint16_t points_approx_distance(GPoint p0, GPoint p1) {
+  return approx_distance(p0.x - p1.x, p0.y - p1.y);
 }
 
 static char * get_score_string(char *buffer, uint8_t buffer_len, uint32_t score) {
@@ -1115,6 +1148,10 @@ static bool check_finished_level() {
 
   if (finished_level) {
     // APP_LOG(APP_LOG_LEVEL_DEBUG, "start finishing level");
+    animation_unschedule((Animation *) s_ball_animation);
+
+    psleep(300);
+
     s_level++;
     s_score += SCORE_LEVEL_COMPLETE;
     layer_mark_dirty(s_status_layer);
@@ -1177,9 +1214,7 @@ static void hit_block(Layer *block_layer, PowerupTypeEnum hit_by_powerup) {
       layer_mark_dirty(s_status_layer);
       
       if (hit_by_powerup == LASER) {
-        if (check_finished_level()) {
-          animation_unschedule((Animation *) s_ball_animation);
-        }
+        check_finished_level();
       }
     }
   }
@@ -1306,8 +1341,9 @@ static BallReflectionTypeEnum ball_reflection(GRect *ball_rect, int16_t *new_bal
       if (diagonal_layer != NULL) {
         if (*hit) {
           if (s_active_powerup != PLASMA) {
-            *new_ball_dir_angle = reflect_angle_X(*new_ball_dir_angle);
-            *new_ball_dir_angle = reflect_angle_Y(*new_ball_dir_angle);
+            GRect block_frame = layer_get_frame(diagonal_layer);
+            *new_ball_dir_angle = atan2_lookup(next_rect.origin.y - block_frame.origin.y,
+                                               next_rect.origin.x - block_frame.origin.x);
           }
           hit_block(diagonal_layer, NONE);
         }
@@ -1373,12 +1409,11 @@ static void ball_animation(uint16_t delay) {
   bool hit = false;
   BallReflectionTypeEnum reflect_type = ball_reflection(&finish, &new_ball_dir_angle, &hit);
 
-  int16_t rough_dist = abs(finish.origin.x - start.origin.x) +
-                       abs(finish.origin.y - start.origin.y);
+  uint16_t anim_duration = get_ball_time_per_dist() * points_approx_distance(start.origin, finish.origin);
 
   // Schedule the next animation
   s_ball_animation = property_animation_create_layer_frame(s_ball_layer, &start, &finish);
-  animation_set_duration((Animation*)s_ball_animation, get_ball_time_per_dist()*rough_dist);
+  animation_set_duration((Animation*)s_ball_animation, anim_duration);
   animation_set_delay((Animation*)s_ball_animation, delay);
   animation_set_curve((Animation*)s_ball_animation, AnimationCurveLinear);
   animation_set_handlers((Animation*)s_ball_animation, (AnimationHandlers) {
