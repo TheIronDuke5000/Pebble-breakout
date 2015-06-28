@@ -603,9 +603,12 @@ static void leaderboard_entry_layer_draw(Layer *layer, GContext *ctx) {
 static void menu_draw_row(GContext *ctx, const Layer *cell_layer, MenuIndex *cell_index, void *callback_context) {
   GRect bounds = layer_get_bounds(cell_layer);
   GRect text_bounds = bounds;
+  text_bounds.origin.x += 1;
   text_bounds.origin.y += 2;
   text_bounds.size.h -= 2;
-  graphics_context_set_text_color(ctx, GColorBlack);
+  #ifdef PBL_PLATFORM_APLITE
+    graphics_context_set_text_color(ctx, GColorBlack);
+  #endif
 
   uint8_t buffer_len = 20;
   char buffer[buffer_len];
@@ -1748,6 +1751,12 @@ static void menu_window_load(Window *window) {
     .size = {bounds.size.w, MENU_CELL_HEIGHT*3 + 2}
   });
   menu_layer_set_click_config_onto_window(s_menu_layer, window);
+  #ifdef PBL_PLATFORM_BASALT
+    menu_layer_set_normal_colors(s_menu_layer, GColorWhite, GColorBlack);
+    menu_layer_set_highlight_colors(s_menu_layer, GColorBlack, GColorWhite);
+
+    menu_layer_pad_bottom_enable(s_menu_layer,false);
+  #endif
   menu_layer_set_callbacks(s_menu_layer, NULL, (MenuLayerCallbacks) {
     .get_num_sections = NULL,
     .get_num_rows = menu_layer_get_num_rows,
