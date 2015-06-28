@@ -209,7 +209,7 @@ static GRect s_leaderboard_datetime_rect = {
 
 // resource level maps
 #ifdef PBL_COLOR
-  uint32_t s_map_resource_array[] = {
+  static uint32_t s_map_resource_array[] = {
     // RESOURCE_ID_MAP_COLOUR_TEST,
     // RESOURCE_ID_MAP_ONE_BLOCK,
     RESOURCE_ID_MAP_ARKANOID1,
@@ -219,8 +219,10 @@ static GRect s_leaderboard_datetime_rect = {
     RESOURCE_ID_MAP_CLOCK,
     RESOURCE_ID_MAP_SPACE_INVADER
   };
+
+  static uint8_t s_num_maps = 6;
 #else
-  uint32_t s_map_resource_array[] = {
+  static uint32_t s_map_resource_array[] = {
     // RESOURCE_ID_MAP_ONE_BLOCK,
     RESOURCE_ID_MAP_FACE,
     RESOURCE_ID_MAP_BALL,
@@ -228,6 +230,8 @@ static GRect s_leaderboard_datetime_rect = {
     RESOURCE_ID_MAP_CLOCK,
     RESOURCE_ID_MAP_SPACE_INVADER
   };
+
+  static uint8_t s_num_maps = 5;
 #endif
 
 typedef enum {
@@ -379,6 +383,10 @@ static char * get_score_string(char *buffer, uint8_t buffer_len, uint32_t score)
     num_chars++;
   }
   return buff_start;
+}
+
+static int8_t get_ball_time_per_dist() {
+  return (BALL_TIME_PER_DIST * (s_num_maps*2)) / (s_level + s_num_maps*2);
 }
 
 static GPoint get_ball_dir_point() {
@@ -1100,7 +1108,7 @@ static bool check_finished_level() {
     s_score += SCORE_LEVEL_COMPLETE;
     layer_mark_dirty(s_status_layer);
     reset_paddle();
-    load_map_from_resource(s_level);
+    load_map_from_resource(s_level % s_num_maps);
     // APP_LOG(APP_LOG_LEVEL_DEBUG, "end finishing level");
   }
   return finished_level;
@@ -1357,7 +1365,7 @@ static void ball_animation(uint16_t delay) {
 
   // Schedule the next animation
   s_ball_animation = property_animation_create_layer_frame(s_ball_layer, &start, &finish);
-  animation_set_duration((Animation*)s_ball_animation, BALL_TIME_PER_DIST*rough_dist);
+  animation_set_duration((Animation*)s_ball_animation, get_ball_time_per_dist()*rough_dist);
   animation_set_delay((Animation*)s_ball_animation, delay);
   animation_set_curve((Animation*)s_ball_animation, AnimationCurveLinear);
   animation_set_handlers((Animation*)s_ball_animation, (AnimationHandlers) {
