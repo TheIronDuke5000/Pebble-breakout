@@ -1166,7 +1166,9 @@ static void hit_block(Layer *block_layer, PowerupTypeEnum hit_by_powerup) {
       layer_mark_dirty(s_status_layer);
       
       if (hit_by_powerup == LASER) {
-        check_finished_level();
+        if (check_finished_level()) {
+          animation_unschedule((Animation *) s_ball_animation);
+        }
       }
     }
   }
