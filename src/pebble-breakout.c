@@ -623,6 +623,14 @@ static void menu_draw_row(GContext *ctx, const Layer *cell_layer, MenuIndex *cel
     text_bounds, GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
 }
 
+static void menu_draw_separator(GContext *ctx, const Layer *cell_layer, MenuIndex *cell_index, void *callback_context) {
+  graphics_context_set_stroke_color(ctx, GColorBlack);
+  GRect bounds = layer_get_bounds(cell_layer);
+  GPoint p0 = {bounds.origin.x, bounds.origin.y};
+  GPoint p1 = {bounds.origin.x + bounds.size.w, bounds.origin.y};
+  graphics_draw_line(ctx, p0, p1);
+}
+
 static void block_array_destroy() {
   if (s_block_layer_array != NULL) {
     for (int i = 0; i < s_num_blocks; i++) {
@@ -1722,6 +1730,10 @@ static int16_t menu_layer_get_cell_height(struct MenuLayer *menu_layer, MenuInde
   return MENU_CELL_HEIGHT;
 }
 
+static int16_t menu_layer_get_sep_height(struct MenuLayer *menu_layer, MenuIndex *cell_index, void *callback_context) {
+  return 1;
+}
+
 static void menu_window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
@@ -1761,9 +1773,11 @@ static void menu_window_load(Window *window) {
     .get_num_sections = NULL,
     .get_num_rows = menu_layer_get_num_rows,
     .get_cell_height = menu_layer_get_cell_height,
-    .get_header_height = NULL,
     .draw_row = menu_draw_row,
+    .get_header_height = NULL,
     .draw_header = NULL,
+    .get_separator_height = menu_layer_get_sep_height,
+    .draw_separator = menu_draw_separator,
     .select_click = menu_select,
     .select_long_click = NULL
   });
