@@ -237,8 +237,7 @@ typedef enum {
   PADDLE_PHANTOM,
   IMMINENT_DEATH,
   DEATH,
-  BLOCK_VERT,
-  BLOCK_HORZ,
+  BLOCK,
   NO_REFLECT
 } BallReflectionTypeEnum;
 
@@ -1247,36 +1246,51 @@ static BallReflectionTypeEnum ball_reflection(GRect *ball_rect, int16_t *new_bal
     } else {
       // check blocks
       GRect block_frame;
-      bool is_block_alive;
       uint8_t *block_data;
+      Layer *diagonal_layer = NULL;
       for (int j = 0; j < s_num_blocks; j++) {
-        is_block_alive = block_layer_get_num_hits_remaining(s_block_layer_array[j]) > 0;
-        if (is_block_alive) {
+        if (block_layer_get_num_hits_remaining(s_block_layer_array[j]) > 0) {
           block_frame = layer_get_frame(s_block_layer_array[j]);
-          if ((next_rect.origin.y +1 == block_frame.origin.y + block_frame.size.h ||
-               next_rect.origin.y + next_rect.size.h -1 == block_frame.origin.y) &&
-              next_rect.origin.x < block_frame.origin.x + block_frame.size.w &&
-              next_rect.origin.x + next_rect.size.w > block_frame.origin.x) {
+          if ((next_rect.origin.y == block_frame.origin.y + block_frame.size.h ||
+               next_rect.origin.y + next_rect.size.h == block_frame.origin.y) &&
+              (next_rect.origin.x == block_frame.origin.x + block_frame.size.w ||
+               next_rect.origin.x + next_rect.size.w == block_frame.origin.x)) {
+            diagonal_layer = s_block_layer_array[j];
+          } else if ((next_rect.origin.y == block_frame.origin.y + block_frame.size.h ||
+               next_rect.origin.y + next_rect.size.h == block_frame.origin.y) &&
+              next_rect.origin.x <= block_frame.origin.x + block_frame.size.w &&
+              next_rect.origin.x + next_rect.size.w >= block_frame.origin.x) {
             if (*hit) {
               if (s_active_powerup != PLASMA) {
                 *new_ball_dir_angle = reflect_angle_X(*new_ball_dir_angle);
               }
               hit_block(s_block_layer_array[j], NONE);
             }
-            return BLOCK_HORZ;
-          } else if (next_rect.origin.y < block_frame.origin.y + block_frame.size.h &&
-                     next_rect.origin.y + next_rect.size.h > block_frame.origin.y &&
-                     (next_rect.origin.x +1 == block_frame.origin.x + block_frame.size.w ||
-                     next_rect.origin.x + next_rect.size.w -1 == block_frame.origin.x)) {
+            return BLOCK;
+          } else if (next_rect.origin.y <= block_frame.origin.y + block_frame.size.h &&
+                     next_rect.origin.y + next_rect.size.h >= block_frame.origin.y &&
+                     (next_rect.origin.x == block_frame.origin.x + block_frame.size.w ||
+                     next_rect.origin.x + next_rect.size.w == block_frame.origin.x)) {
             if (*hit) {
               if (s_active_powerup != PLASMA) {
                 *new_ball_dir_angle = reflect_angle_Y(*new_ball_dir_angle);
               }
               hit_block(s_block_layer_array[j], NONE);
             }
-            return BLOCK_VERT;
+            return BLOCK;
           }
         }
+      }
+
+      if (diagonal_layer != NULL) {
+        if (*hit) {
+          if (s_active_powerup != PLASMA) {
+            *new_ball_dir_angle = reflect_angle_X(*new_ball_dir_angle);
+            *new_ball_dir_angle = reflect_angle_Y(*new_ball_dir_angle);
+          }
+          hit_block(diagonal_layer, NONE);
+        }
+        return BLOCK;
       }
     }
 
