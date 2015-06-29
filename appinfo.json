@@ -1,9 +1,9 @@
 {
   "uuid": "c3401829-7aa5-464d-926d-6c4c5ce6db1d",
-  "shortName": "Ball Buster",
-  "longName": "Ball Buster",
+  "shortName": "Block Breaker",
+  "longName": "Block Breaker",
   "companyName": "Iron Duke Industries",
-  "versionLabel": "1.0",
+  "versionLabel": "1.2",
   "sdkVersion": "3",
   "targetPlatforms": ["aplite", "basalt"],
   "watchapp": {

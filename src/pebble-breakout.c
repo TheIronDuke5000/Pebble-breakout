@@ -1783,7 +1783,7 @@ static void menu_window_load(Window *window) {
   title_rect.origin.y = 4;
   title_rect.size.h = 36;
   s_menu_title_layer = text_layer_create(title_rect);
-  text_layer_set_text(s_menu_title_layer, "BALL BUSTER");
+  text_layer_set_text(s_menu_title_layer, "BLOCK BREAKER");
   text_layer_set_background_color(s_menu_title_layer, GColorWhite);
   text_layer_set_text_color(s_menu_title_layer, GColorBlack);
   text_layer_set_font(s_menu_title_layer, s_arcade_font_16);
