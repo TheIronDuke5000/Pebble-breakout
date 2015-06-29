@@ -421,7 +421,8 @@ static char * get_score_string(char *buffer, uint8_t buffer_len, uint32_t score)
 }
 
 static int8_t get_ball_time_per_dist() {
-  return (BALL_TIME_PER_DIST * (s_num_maps*2)) / (s_level + s_num_maps*2);
+  uint8_t speed_increase_factor = 5;    // higher means that the speed will increase less with each level
+  return (BALL_TIME_PER_DIST * (s_num_maps*speed_increase_factor)) / (s_level + s_num_maps*speed_increase_factor);
 }
 
 static GPoint get_ball_dir_point() {
@@ -1344,8 +1345,11 @@ static BallReflectionTypeEnum ball_reflection(GRect *ball_rect, int16_t *new_bal
         if (*hit) {
           if (s_active_powerup != PLASMA) {
             GRect block_frame = layer_get_frame(diagonal_layer);
-            *new_ball_dir_angle = atan2_lookup(next_rect.origin.y - block_frame.origin.y,
-                                               next_rect.origin.x - block_frame.origin.x);
+            GPoint ball_centre = grect_center_point(&next_rect);
+            GPoint block_centre = grect_center_point(&block_frame);
+
+            *new_ball_dir_angle = atan2_lookup(2*(ball_centre.y - block_centre.y),
+                                               ball_centre.x - block_centre.x);
           }
           hit_block(diagonal_layer, NONE);
         }
