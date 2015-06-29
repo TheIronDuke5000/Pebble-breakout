@@ -15,6 +15,12 @@
   "resources": {
     "media": [
       {
+        "menuIcon": true,
+        "name": "IMAGE_MENU_ICON",
+        "file": "ball_logo~28.png",
+        "type": "png"
+      },
+      {
         "name": "ARCADE_FONT_8",
         "file": "ARCADE_FONT_TTF.ttf",
         "characterRegex": "[\t-~]",
