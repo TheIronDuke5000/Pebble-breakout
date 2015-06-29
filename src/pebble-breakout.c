@@ -1133,7 +1133,7 @@ static void drop_powerup(PowerupTypeEnum powerup, Layer *block_layer) {
   s_num_powerup_drops++;
 }
 
-static bool check_finished_level() {
+static bool check_finished_level(PowerupTypeEnum hit_by_powerup) {
   // APP_LOG(APP_LOG_LEVEL_DEBUG, "start check level");
   uint8_t num_hits;
 
@@ -1148,10 +1148,10 @@ static bool check_finished_level() {
 
   if (finished_level) {
     // APP_LOG(APP_LOG_LEVEL_DEBUG, "start finishing level");
-    animation_unschedule((Animation *) s_ball_animation);
-
-    psleep(300);
-
+    if (hit_by_powerup == LASER) {
+      animation_unschedule((Animation *) s_ball_animation);
+      psleep(300);
+    }
     s_level++;
     s_score += SCORE_LEVEL_COMPLETE;
     layer_mark_dirty(s_status_layer);
@@ -1214,7 +1214,7 @@ static void hit_block(Layer *block_layer, PowerupTypeEnum hit_by_powerup) {
       layer_mark_dirty(s_status_layer);
       
       if (hit_by_powerup == LASER) {
-        check_finished_level();
+        check_finished_level(LASER);
       }
     }
   }
@@ -1384,7 +1384,7 @@ static void ball_anim_stopped_handler(Animation *animation, bool finished, void 
     } else {
       bool finished_level = false;
       if (hit) {
-        finished_level = check_finished_level();
+        finished_level = check_finished_level(NONE);
         s_ball_dir_angle = new_ball_dir_angle;
       }
       // APP_LOG(APP_LOG_LEVEL_DEBUG, "return from check_finished_level finished?: %d", finished_level ? 1 : 0);
