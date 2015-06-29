@@ -212,9 +212,21 @@ static GRect s_leaderboard_datetime_rect = {
   static uint32_t s_map_resource_array[] = {
     // RESOURCE_ID_MAP_COLOUR_TEST,
     // RESOURCE_ID_MAP_ONE_BLOCK,
-    RESOURCE_ID_MAP_SHIP,
     RESOURCE_ID_MAP_ARKANOID1,
+    RESOURCE_ID_MAP_SHIP,
     RESOURCE_ID_MAP_FACE,
+    RESOURCE_ID_MAP_BALL,
+    RESOURCE_ID_MAP_RAINBOW,
+    RESOURCE_ID_MAP_CLOCK,
+    RESOURCE_ID_MAP_SPACE_INVADER
+  };
+
+  static uint8_t s_num_maps = 7;
+#else
+  static uint32_t s_map_resource_array[] = {
+    // RESOURCE_ID_MAP_ONE_BLOCK,
+    RESOURCE_ID_MAP_FACE,
+    RESOURCE_ID_MAP_SHIP,
     RESOURCE_ID_MAP_BALL,
     RESOURCE_ID_MAP_RAINBOW,
     RESOURCE_ID_MAP_CLOCK,
@@ -222,18 +234,6 @@ static GRect s_leaderboard_datetime_rect = {
   };
 
   static uint8_t s_num_maps = 6;
-#else
-  static uint32_t s_map_resource_array[] = {
-    // RESOURCE_ID_MAP_ONE_BLOCK,
-    RESOURCE_ID_MAP_SHIP,
-    RESOURCE_ID_MAP_FACE,
-    RESOURCE_ID_MAP_BALL,
-    RESOURCE_ID_MAP_RAINBOW,
-    RESOURCE_ID_MAP_CLOCK,
-    RESOURCE_ID_MAP_SPACE_INVADER
-  };
-
-  static uint8_t s_num_maps = 5;
 #endif
 
 typedef enum {
