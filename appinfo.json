@@ -72,13 +72,8 @@
         "type": "raw"
       },
       {
-        "name": "MAP_ONE_BLOCK",
-        "file": "map_one_block.dat",
-        "type": "raw"
-      },
-      {
-        "name": "MAP_ONE_BLOCK2",
-        "file": "map_one_block2.dat",
+        "name": "MAP_SHIP",
+        "file": "map_ship.dat",
         "type": "raw"
       }
     ]

@@ -212,6 +212,7 @@ static GRect s_leaderboard_datetime_rect = {
   static uint32_t s_map_resource_array[] = {
     // RESOURCE_ID_MAP_COLOUR_TEST,
     // RESOURCE_ID_MAP_ONE_BLOCK,
+    RESOURCE_ID_MAP_SHIP,
     RESOURCE_ID_MAP_ARKANOID1,
     RESOURCE_ID_MAP_FACE,
     RESOURCE_ID_MAP_BALL,
@@ -224,6 +225,7 @@ static GRect s_leaderboard_datetime_rect = {
 #else
   static uint32_t s_map_resource_array[] = {
     // RESOURCE_ID_MAP_ONE_BLOCK,
+    RESOURCE_ID_MAP_SHIP,
     RESOURCE_ID_MAP_FACE,
     RESOURCE_ID_MAP_BALL,
     RESOURCE_ID_MAP_RAINBOW,
