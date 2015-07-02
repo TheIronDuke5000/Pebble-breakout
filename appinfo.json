@@ -81,6 +81,11 @@
         "name": "MAP_SHIP",
         "file": "map_ship.dat",
         "type": "raw"
+      },
+      {
+        "name": "MAP_HOUSE",
+        "file": "map_house.dat",
+        "type": "raw"
       }
     ]
   }
