@@ -86,6 +86,11 @@
         "name": "MAP_HOUSE",
         "file": "map_house.dat",
         "type": "raw"
+      },
+      {
+        "name": "MAP_META_PEBBLE",
+        "file": "map_meta_pebble.dat",
+        "type": "raw"
       }
     ]
   }

@@ -212,6 +212,7 @@ static GRect s_leaderboard_datetime_rect = {
   static uint32_t s_map_resource_array[] = {
     // RESOURCE_ID_MAP_COLOUR_TEST,
     // RESOURCE_ID_MAP_ONE_BLOCK,
+    RESOURCE_ID_MAP_META_PEBBLE,
     RESOURCE_ID_MAP_HOUSE,
     RESOURCE_ID_MAP_ARKANOID1,
     RESOURCE_ID_MAP_SHIP,
@@ -226,6 +227,8 @@ static GRect s_leaderboard_datetime_rect = {
 #else
   static uint32_t s_map_resource_array[] = {
     // RESOURCE_ID_MAP_ONE_BLOCK,
+    RESOURCE_ID_MAP_META_PEBBLE,
+    RESOURCE_ID_MAP_HOUSE,
     RESOURCE_ID_MAP_FACE,
     RESOURCE_ID_MAP_SHIP,
     RESOURCE_ID_MAP_BALL,
@@ -443,6 +446,11 @@ static int16_t reflect_angle_Y(int16_t angle) {
   return angle;
 }
 
+static bool block_is_indestructible(Layer *block_layer) {
+  uint8_t *block_data = layer_get_data(block_layer);
+  return ((*block_data) == 0xff);
+}
+
 static uint8_t block_layer_get_num_hits_remaining(Layer *block_layer) {
   uint8_t *block_data = layer_get_data(block_layer);
   return (*block_data) & 0x0f;
@@ -461,11 +469,10 @@ static uint8_t block_layer_dec_num_hits_remaining(Layer *block_layer) {
 
 static void block_layer_draw(Layer *layer, GContext *ctx) {
   uint8_t num_hits = block_layer_get_num_hits_remaining(layer);
-  uint8_t *block_data = layer_get_data(layer);
   GRect bounds = layer_get_bounds(layer);
   // GRect inner_rect
 
-  if (*block_data == 0xff) {
+  if (block_is_indestructible(layer)) {
     graphics_draw_bitmap_in_rect(ctx, s_solid_block_bitmap, bounds);
   } else if (num_hits > 0) {
     GRect inside_bounds = bounds;
@@ -1167,9 +1174,8 @@ static bool check_finished_level(PowerupTypeEnum hit_by_powerup) {
 }
 
 static void hit_block(Layer *block_layer, PowerupTypeEnum hit_by_powerup) {
-  uint8_t *block_data = layer_get_data(block_layer);
   uint8_t num_hits = block_layer_get_num_hits_remaining(block_layer);
-  if (num_hits == 0x0f) {
+  if (block_is_indestructible(block_layer)) {
     // solid block
   } else if (num_hits == 0) {
     // destroyed block
@@ -1321,7 +1327,7 @@ static BallReflectionTypeEnum ball_reflection(GRect *ball_rect, int16_t *new_bal
               next_rect.origin.x <= block_frame.origin.x + block_frame.size.w &&
               next_rect.origin.x + next_rect.size.w >= block_frame.origin.x) {
             if (*hit) {
-              if (s_active_powerup != PLASMA) {
+              if (s_active_powerup != PLASMA || block_is_indestructible(s_block_layer_array[j])) {
                 *new_ball_dir_angle = reflect_angle_X(*new_ball_dir_angle);
               }
               hit_block(s_block_layer_array[j], NONE);
@@ -1332,7 +1338,7 @@ static BallReflectionTypeEnum ball_reflection(GRect *ball_rect, int16_t *new_bal
                      (next_rect.origin.x == block_frame.origin.x + block_frame.size.w ||
                      next_rect.origin.x + next_rect.size.w == block_frame.origin.x)) {
             if (*hit) {
-              if (s_active_powerup != PLASMA) {
+              if (s_active_powerup != PLASMA || block_is_indestructible(s_block_layer_array[j])) {
                 *new_ball_dir_angle = reflect_angle_Y(*new_ball_dir_angle);
               }
               hit_block(s_block_layer_array[j], NONE);
@@ -1344,7 +1350,7 @@ static BallReflectionTypeEnum ball_reflection(GRect *ball_rect, int16_t *new_bal
 
       if (diagonal_layer != NULL) {
         if (*hit) {
-          if (s_active_powerup != PLASMA) {
+          if (s_active_powerup != PLASMA || block_is_indestructible(diagonal_layer)) {
             GRect block_frame = layer_get_frame(diagonal_layer);
             GPoint ball_centre = grect_center_point(&next_rect);
             GPoint block_centre = grect_center_point(&block_frame);
