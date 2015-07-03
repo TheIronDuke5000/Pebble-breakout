@@ -3,7 +3,7 @@
   "shortName": "Block Breaker",
   "longName": "Block Breaker",
   "companyName": "Iron Duke Industries",
-  "versionLabel": "1.3",
+  "versionLabel": "1.4",
   "sdkVersion": "3",
   "targetPlatforms": ["aplite", "basalt"],
   "watchapp": {
