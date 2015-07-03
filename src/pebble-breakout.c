@@ -66,7 +66,6 @@
                                                                                              
 */
 
-
 #include <pebble.h>
 
 #define MAX_NUM_POWERUP_DROPS 10  // maximum number of currently dropping powerups
