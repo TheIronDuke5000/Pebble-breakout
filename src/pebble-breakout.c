@@ -77,7 +77,9 @@
 #define LASER_FIRE_TIME_PER_DIST 6
 #define BOMB_BLAST_RADIUS 20
 #define MAX_NUM_BLOCKS 120
-#define MAX_NUM_LEADERBOARD 10
+#define MAX_NUM_LOCAL_LEADERBOARD 5
+#define MAX_NUM_GLOBAL_LEADERBOARD 9
+#define MAX_LBE_NAME_LENGTH 18    // 17 characters + 1 null char to terminate
 
 // #define DEBUG
 
@@ -86,16 +88,66 @@ static TextLayer *s_text_layer;
 static char s_text_layer_text[20];
 #endif
 
+
+// WARNING
+// dont change these structs unless absolutely necessary.
+// they hold the leaderboard information.
+// if they are changed the leaderboard persist could become corrupted and users could lose their high scores
 typedef struct {
-  time_t datetime;
+  time_t datetime;    // unsigned int
   uint32_t score;
   uint8_t level;
 } Leaderboard_Entry;
 
+typedef struct {
+  time_t datetime;    // unsigned int
+  uint32_t score;
+  char name[MAX_LBE_NAME_LENGTH];
+  uint8_t level;
+} __attribute__((__packed__)) Global_Leaderboard_Entry;
+
+#define P_PADDLE_KEY 0        // int for x value of origin of paddle layer
+#define P_BALL_DATA_KEY 1     // array of 3 int16_t, [x, y, angle]    2 bytes per int16_t * 3 = 6 bytes 
+#define P_POWERUP_KEY 2       // PowerupTypeEnum saved as an int
+#define P_BLOCKS_DATA_START_KEY 4   // array of bytes with the same format as the file (HH XX YY) HH is the nubmer of hits remaining
+// P_BLOCKS_DATA_KEY + table_index gives access to locations 4-19, this is 16*256 bytes 
+// 4-19 reserved for P_BLOCKS_DATA_KEY + table_index
+#define P_BLOCKS_DATA_END_KEY 19
+#define P_LIVES_KEY 20
+#define P_LEVEL_KEY 21
+#define P_SCORE_KEY 22
+#define P_LOCAL_LEADERBOARD_KEY 23
+#define P_GLOBAL_LEADERBOARD_KEY 24
+#define P_NAME_KEY 25
+#define P_USER_ID_KEY 26
+
+#define APP_MSG_READY_KEY 5
+#define APP_MSG_NAME_STR_KEY 25
+
+#define APP_MSG_LBE_OFFSET 100
+#define APP_MSG_LBE_DATETIME_UINT_KEY 0
+#define APP_MSG_LBE_SCORE_UINT32_KEY 1
+#define APP_MSG_LBE_LEVEL_UINT8_KEY 2
+#define APP_MSG_LBE_NAME_STR_KEY 3
+#define APP_MSG_LBE_NUM_ELEMENTS 4
+
+#define STATUS_LAYER_HEIGHT 12
+#define SCORE_MAX_WIDTH 5
+#define SCORE_BLOCK_KILL 1
+#define SCORE_POWERUP_CATCH 10
+#define SCORE_LEVEL_COMPLETE 100
+
+#define BLOCK_W 16
+#define BLOCK_H 8
+
+#define LEADERBOARD_ENTRY_HEIGHT 40
+#define LEADERBOARD_SECTION_HEADER_HEIGHT 12
+#define LEADERBOARD_PROMPT_FOR_NAME_HEIGHT 160
+
 static Window *s_leaderboard_window;
 static ScrollLayer *s_leaderboard_scroll_layer;
-static TextLayer *s_leaderboard_title_layer;
-static Layer *s_leaderboard_layer_array[MAX_NUM_LEADERBOARD];
+static uint8_t s_leaderboard_scroll_num_layers;
+static Layer **s_leaderboard_layer_array;
 static Window *s_menu_window;
 static MenuLayer *s_menu_layer;
 static TextLayer *s_menu_title_layer;
@@ -126,15 +178,6 @@ static PropertyAnimation *s_laser_fire_animation_array[MAX_NUM_LASER_FIRE];
 static uint8_t s_num_laser_fire = 0;
 static GPath *s_block_shadow_path;
 static GBitmap *s_solid_block_bitmap;
-
-#define STATUS_LAYER_HEIGHT 12
-#define SCORE_MAX_WIDTH 5
-#define SCORE_BLOCK_KILL 1
-#define SCORE_POWERUP_CATCH 10
-#define SCORE_LEVEL_COMPLETE 100
-
-#define BLOCK_W 16
-#define BLOCK_H 8
 
 static GSize s_block_size = {BLOCK_W, BLOCK_H};
 
@@ -169,38 +212,30 @@ static GRect s_laser_fire_frame = {
   .size = {3, 5}
 };
 
-#define LEADERBOARD_ENTRY_HEIGHT 32
 
 static GRect s_leaderboard_score_rect = {
-  .origin = {4, 3},
+  .origin = {4, 2},
   .size = {144, 20}
 };
 
 static GRect s_leaderboard_level_rect = {
-  .origin = {4, 22},
+  .origin = {4, 30},
   .size = {144, 10}
 };
 
 static GRect s_leaderboard_datetime_rect = {
-  .origin = {4, 22},
+  .origin = {4, 30},
+  .size = {144, 10}
+};
+
+static GRect s_leaderboard_name_rect = {
+  .origin = {4, 20},
   .size = {144, 10}
 };
 
 #define MENU_CELL_HEIGHT 20
 
 #define PADDLE_ORIGIN_Y 148
-
-#define P_PADDLE_KEY 0        // int for x value of origin of paddle layer
-#define P_BALL_DATA_KEY 1     // array of 3 int16_t, [x, y, angle]    2 bytes per int16_t * 3 = 6 bytes 
-#define P_POWERUP_KEY 2       // PowerupTypeEnum saved as an int
-#define P_BLOCKS_DATA_START_KEY 4   // array of bytes with the same format as the file (HH XX YY) HH is the nubmer of hits remaining
-// P_BLOCKS_DATA_KEY + table_index gives access to locations 4-19, this is 16*256 bytes 
-// 4-19 reserved for P_BLOCKS_DATA_KEY + table_index
-#define P_BLOCKS_DATA_END_KEY 19
-#define P_LIVES_KEY 20
-#define P_LEVEL_KEY 21
-#define P_SCORE_KEY 22
-#define P_LEADERBOARD_KEY 23
 
 #define PADDLE_WIDTH_STANDARD 30
 #define PADDLE_WIDTH_SMALL 16
@@ -377,7 +412,6 @@ static int8_t sign(int32_t a) {
   }
   return 0;
 }
-
 
 // http://www.flipcode.com/archives/Fast_Approximate_Distance_Functions.shtml
 // Fast Approximate Distance Functions
@@ -615,8 +649,9 @@ static void leaderboard_entry_layer_draw(Layer *layer, GContext *ctx) {
   s_leaderboard_score_rect.size.w = bounds.size.w - 8;
   s_leaderboard_level_rect.size.w = bounds.size.w - 8;
   s_leaderboard_datetime_rect.size.w = bounds.size.w - 8;
+  s_leaderboard_name_rect.size.w = bounds.size.w - 8;
 
-  Leaderboard_Entry *entry = layer_get_data(layer);
+  Global_Leaderboard_Entry *entry = layer_get_data(layer);
 
   graphics_context_set_text_color(ctx, GColorBlack);
 
@@ -625,6 +660,9 @@ static void leaderboard_entry_layer_draw(Layer *layer, GContext *ctx) {
   char * buff_start = get_score_string(buffer, buffer_len, entry->score);
   graphics_draw_text(ctx, buff_start, s_arcade_font_16,
     s_leaderboard_score_rect, GTextOverflowModeWordWrap, GTextAlignmentLeft, NULL);
+
+  graphics_draw_text(ctx, entry->name, s_arcade_font_8,
+    s_leaderboard_name_rect, GTextOverflowModeWordWrap, GTextAlignmentLeft, NULL);
 
   snprintf(buffer, buffer_len, "LVL%d", entry->level + 1);
   graphics_draw_text(ctx, buffer, s_arcade_font_8,
@@ -640,6 +678,35 @@ static void leaderboard_entry_layer_draw(Layer *layer, GContext *ctx) {
   GPoint p1 = {bounds.size.w, bounds.size.h-1};
   graphics_context_set_stroke_color(ctx, GColorBlack);
   graphics_draw_line(ctx, p0, p1);
+}
+
+static void leaderboard_section_header_layer_draw(Layer *layer, GContext *ctx) {
+  GRect bounds = layer_get_bounds(layer);
+  GRect text_bounds = bounds;
+  text_bounds.origin.y += 2;
+
+  graphics_context_set_fill_color(ctx, GColorBlack);
+  graphics_fill_rect(ctx, bounds, 0, GCornersAll);
+  
+  char *header_text = layer_get_data(layer);
+  graphics_context_set_text_color(ctx, GColorWhite);
+
+  graphics_draw_text(ctx, header_text, s_arcade_font_8,
+    text_bounds, GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
+}
+
+static void leaderboard_prompt_message_layer_draw(Layer *layer, GContext *ctx) {
+  GRect bounds = layer_get_bounds(layer);
+  GRect text_bounds = bounds;
+  text_bounds.origin.y += 2;
+  text_bounds.origin.x += 4;
+  text_bounds.size.w -= 8;
+
+  char *message_text = layer_get_data(layer);
+  graphics_context_set_text_color(ctx, GColorBlack);
+
+  graphics_draw_text(ctx, message_text, s_arcade_font_8,
+    text_bounds, GTextOverflowModeWordWrap, GTextAlignmentLeft, NULL);
 }
 
 static void menu_draw_row(GContext *ctx, const Layer *cell_layer, MenuIndex *cell_index, void *callback_context) {
@@ -816,6 +883,7 @@ static void reset_paddle();
 static void ball_animation(uint16_t delay);
 static void release_ball_from_hold();
 static void persist_leaderboard_data();
+static void send_leaderboard_to_server();
 static void hit_block(Layer *block_layer, PowerupTypeEnum hit_by_powerup);
 static void schedule_laser_animation(Layer *laser_fire_layer);
 static void load_map_from_resource(uint8_t level_id);
@@ -1241,6 +1309,7 @@ static void hold_ball() {
 
 static void death() {
   persist_leaderboard_data();
+  send_leaderboard_to_server();
   window_stack_pop(true);
 }
 
@@ -1612,13 +1681,13 @@ static void persist_leaderboard_data() {
   default_entry.level = 0;
   default_entry.datetime = 0;
 
-  Leaderboard_Entry leaderboard_array[MAX_NUM_LEADERBOARD] = {default_entry};
-  if (persist_exists(P_LEADERBOARD_KEY)) {
-    persist_read_data(P_LEADERBOARD_KEY, leaderboard_array, sizeof(Leaderboard_Entry) * MAX_NUM_LEADERBOARD);
+  Leaderboard_Entry leaderboard_array[MAX_NUM_LOCAL_LEADERBOARD] = {default_entry};
+  if (persist_exists(P_LOCAL_LEADERBOARD_KEY)) {
+    persist_read_data(P_LOCAL_LEADERBOARD_KEY, leaderboard_array, sizeof(Leaderboard_Entry) * MAX_NUM_LOCAL_LEADERBOARD);
   }
 
   int8_t insert_index = -1;
-  for (uint8_t i = 0; i < MAX_NUM_LEADERBOARD; i++) {
+  for (uint8_t i = 0; i < MAX_NUM_LOCAL_LEADERBOARD; i++) {
     if (leaderboard_array[i].score < s_score) {
       insert_index = i;
       break;
@@ -1626,7 +1695,7 @@ static void persist_leaderboard_data() {
   }
 
   if (insert_index != -1) {
-    for (uint8_t i = MAX_NUM_LEADERBOARD - 1; i > insert_index; i--) {
+    for (uint8_t i = MAX_NUM_LOCAL_LEADERBOARD - 1; i > insert_index; i--) {
       leaderboard_array[i].score = leaderboard_array[i-1].score;
       leaderboard_array[i].level = leaderboard_array[i-1].level;
       leaderboard_array[i].datetime = leaderboard_array[i-1].datetime;
@@ -1636,15 +1705,50 @@ static void persist_leaderboard_data() {
     leaderboard_array[insert_index].level = s_level;
     leaderboard_array[insert_index].datetime = time(NULL);
 
-    // for (uint8_t i = 0; i < MAX_NUM_LEADERBOARD; i++) {
+    // for (uint8_t i = 0; i < MAX_NUM_LOCAL_LEADERBOARD; i++) {
     //   APP_LOG(APP_LOG_LEVEL_DEBUG, "leader score %d, level %d, time %d", 
     //           (int) (leaderboard_array[i].score), 
     //           (int) (leaderboard_array[i].level), 
     //           (int) (leaderboard_array[i].datetime));
     // }
 
-    persist_write_data(P_LEADERBOARD_KEY, leaderboard_array, sizeof(Leaderboard_Entry) * MAX_NUM_LEADERBOARD);
+    persist_write_data(P_LOCAL_LEADERBOARD_KEY, leaderboard_array, sizeof(Leaderboard_Entry) * MAX_NUM_LOCAL_LEADERBOARD);
   }
+}
+
+static void send_leaderboard_to_server() {
+
+  Leaderboard_Entry default_entry = (Leaderboard_Entry) {
+    .score = 0,
+    .level = 0,
+    .datetime = 0
+  };
+
+  Leaderboard_Entry leaderboard_array[MAX_NUM_LOCAL_LEADERBOARD] = {default_entry};
+  uint8_t num_to_send = 1;
+  if (persist_exists(P_LOCAL_LEADERBOARD_KEY)) {
+    num_to_send = MAX_NUM_LOCAL_LEADERBOARD;
+    persist_read_data(P_LOCAL_LEADERBOARD_KEY, leaderboard_array, sizeof(Leaderboard_Entry) * MAX_NUM_LOCAL_LEADERBOARD);
+  }
+
+  DictionaryIterator *iter;
+  app_message_outbox_begin(&iter);
+  if (iter == NULL) {
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "null iter");
+    return;
+  }
+
+  for (uint8_t i = 0; i < num_to_send; i++) {
+    uint8_t app_msg_start_index = APP_MSG_LBE_OFFSET + i*APP_MSG_LBE_NUM_ELEMENTS;
+    dict_write_uint32(iter, app_msg_start_index + APP_MSG_LBE_SCORE_UINT32_KEY, leaderboard_array[i].score);
+    dict_write_uint32(iter, app_msg_start_index + APP_MSG_LBE_DATETIME_UINT_KEY, (uint32_t) leaderboard_array[i].datetime);
+    dict_write_uint8(iter, app_msg_start_index + APP_MSG_LBE_LEVEL_UINT8_KEY, leaderboard_array[i].level);
+  }
+
+  dict_write_end(iter);
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "send leaderboard to server");
+
+  app_message_outbox_send();
 }
 
 static void game_window_load(Window *window) {
@@ -1788,7 +1892,15 @@ static void menu_window_load(Window *window) {
   title_rect.origin.y = 4;
   title_rect.size.h = 36;
   s_menu_title_layer = text_layer_create(title_rect);
+
+
+  char buffer[20];
+  persist_read_string(P_NAME_KEY, buffer, 20);
+
+  APP_LOG(APP_LOG_LEVEL_DEBUG, "name: %s", buffer);
+
   text_layer_set_text(s_menu_title_layer, "BLOCK BREAKER");
+
   text_layer_set_background_color(s_menu_title_layer, GColorWhite);
   text_layer_set_text_color(s_menu_title_layer, GColorBlack);
   text_layer_set_font(s_menu_title_layer, s_arcade_font_16);
@@ -1841,62 +1953,186 @@ static void menu_window_unload(Window *window) {
 static void leaderboard_window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
+
+  uint16_t scroll_layer_content_height = 0;
+  s_leaderboard_scroll_num_layers = 0;
+
   GRect item_frame = bounds;
   item_frame.size.h = LEADERBOARD_ENTRY_HEIGHT;
 
-  GRect title_rect = bounds;
-  title_rect.size.h = 18;
-  s_leaderboard_title_layer = text_layer_create(title_rect);
-  text_layer_set_text(s_leaderboard_title_layer, "HI SCORES");
-  text_layer_set_background_color(s_leaderboard_title_layer, GColorBlack);
-  text_layer_set_text_color(s_leaderboard_title_layer, GColorWhite);
-  text_layer_set_font(s_leaderboard_title_layer, s_arcade_font_16);
-  text_layer_set_text_alignment(s_leaderboard_title_layer, GTextAlignmentCenter);
-  layer_add_child(window_layer, (Layer *)s_leaderboard_title_layer);
+  GRect section_header_frame = bounds;
+  section_header_frame.size.h = LEADERBOARD_SECTION_HEADER_HEIGHT;
 
+  // create scroll layer
   GRect scroll_rect = bounds;
-  scroll_rect.size.h -= title_rect.size.h;
-  scroll_rect.origin.y +=title_rect.size.h;
   s_leaderboard_scroll_layer = scroll_layer_create(scroll_rect);
   scroll_layer_set_click_config_onto_window(s_leaderboard_scroll_layer, window);
   layer_add_child(window_layer, (Layer *)s_leaderboard_scroll_layer);
 
-  Leaderboard_Entry default_entry;
-  default_entry.score = 0;
-  default_entry.level = 0;
-  default_entry.datetime = 0;
+  s_leaderboard_layer_array = (Layer **) malloc((MAX_NUM_LOCAL_LEADERBOARD + MAX_NUM_GLOBAL_LEADERBOARD + 2) * sizeof(Layer *));
 
-  Leaderboard_Entry leaderboard_entry_array[MAX_NUM_LEADERBOARD] = {default_entry};
-  if (persist_exists(P_LEADERBOARD_KEY)) {
+  // scroll layer personal scores section header
+  section_header_frame.origin.y = scroll_layer_content_height;
+  s_leaderboard_layer_array[s_leaderboard_scroll_num_layers] = layer_create_with_data(section_header_frame, 20);
+  char *section_header_text = layer_get_data(s_leaderboard_layer_array[s_leaderboard_scroll_num_layers]);
+  strncpy(section_header_text, "PERSONAL SCORES", 20);
+  layer_set_update_proc(s_leaderboard_layer_array[s_leaderboard_scroll_num_layers], leaderboard_section_header_layer_draw);
+  scroll_layer_add_child(s_leaderboard_scroll_layer, s_leaderboard_layer_array[s_leaderboard_scroll_num_layers]);
+  s_leaderboard_scroll_num_layers++;
+  scroll_layer_content_height += section_header_frame.size.h;
+
+  // load personal scores from persist
+  Leaderboard_Entry default_entry = (Leaderboard_Entry) {
+    .score = 0,
+    .level = 0,
+    .datetime = 0
+  };
+
+  Leaderboard_Entry leaderboard_entry_array[MAX_NUM_LOCAL_LEADERBOARD] = {default_entry};
+  if (persist_exists(P_LOCAL_LEADERBOARD_KEY)) {
     APP_LOG(APP_LOG_LEVEL_DEBUG, "persist exists");
-    persist_read_data(P_LEADERBOARD_KEY, leaderboard_entry_array, sizeof(Leaderboard_Entry) * MAX_NUM_LEADERBOARD);
+    persist_read_data(P_LOCAL_LEADERBOARD_KEY, leaderboard_entry_array, sizeof(Leaderboard_Entry) * MAX_NUM_LOCAL_LEADERBOARD);
   }
 
-  Leaderboard_Entry *layer_entry;
-  for (uint8_t i = 0; i < MAX_NUM_LEADERBOARD; i++) {
-    s_leaderboard_layer_array[i] = layer_create_with_data(item_frame, sizeof(Leaderboard_Entry));
-    layer_entry = layer_get_data(s_leaderboard_layer_array[i]);
+  char user_name[MAX_LBE_NAME_LENGTH] = "";
+  if (persist_exists(P_NAME_KEY)) {
+    persist_read_string(P_NAME_KEY, user_name, MAX_LBE_NAME_LENGTH);
+  }
+
+  // create layers for personal scores
+  Global_Leaderboard_Entry *layer_entry;
+  for (uint8_t i = 0; i < MAX_NUM_LOCAL_LEADERBOARD; i++) {
+    item_frame.origin.y = scroll_layer_content_height;
+    s_leaderboard_layer_array[s_leaderboard_scroll_num_layers] = layer_create_with_data(item_frame, sizeof(Global_Leaderboard_Entry));
+    layer_entry = layer_get_data(s_leaderboard_layer_array[s_leaderboard_scroll_num_layers]);
     layer_entry->score = leaderboard_entry_array[i].score;
     layer_entry->level = leaderboard_entry_array[i].level;
     layer_entry->datetime = leaderboard_entry_array[i].datetime;
-    layer_set_update_proc(s_leaderboard_layer_array[i], leaderboard_entry_layer_draw);
+    strncpy(layer_entry->name, user_name, MAX_LBE_NAME_LENGTH);
+    layer_set_update_proc(s_leaderboard_layer_array[s_leaderboard_scroll_num_layers], leaderboard_entry_layer_draw);
 
-    scroll_layer_add_child(s_leaderboard_scroll_layer, s_leaderboard_layer_array[i]);
-    item_frame.origin.y += LEADERBOARD_ENTRY_HEIGHT;
+    scroll_layer_add_child(s_leaderboard_scroll_layer, s_leaderboard_layer_array[s_leaderboard_scroll_num_layers]);
+    s_leaderboard_scroll_num_layers++;
+    scroll_layer_content_height += item_frame.size.h;
   }
-  bounds.size.h = item_frame.origin.y;
+
+  // scroll layer global scores section header
+  section_header_frame.origin.y = scroll_layer_content_height;
+  s_leaderboard_layer_array[s_leaderboard_scroll_num_layers] = layer_create_with_data(section_header_frame, 20);
+  section_header_text = layer_get_data(s_leaderboard_layer_array[s_leaderboard_scroll_num_layers]);
+  strncpy(section_header_text, "GLOBAL SCORES", 20);
+  layer_set_update_proc(s_leaderboard_layer_array[s_leaderboard_scroll_num_layers], leaderboard_section_header_layer_draw);
+  scroll_layer_add_child(s_leaderboard_scroll_layer, s_leaderboard_layer_array[s_leaderboard_scroll_num_layers]);
+  s_leaderboard_scroll_num_layers++;
+  scroll_layer_content_height += section_header_frame.size.h;
+
+  // load global scores from persist
+  Global_Leaderboard_Entry global_default_entry = (Global_Leaderboard_Entry) {
+    .score = 0,
+    .level = 0,
+    .datetime = 0,
+    .name = ""
+  };
+
+  Global_Leaderboard_Entry global_leaderboard_entry_array[MAX_NUM_GLOBAL_LEADERBOARD] = {global_default_entry};
+  if (persist_exists(P_GLOBAL_LEADERBOARD_KEY)) {
+    APP_LOG(APP_LOG_LEVEL_DEBUG, "persist exists");
+    persist_read_data(P_GLOBAL_LEADERBOARD_KEY, global_leaderboard_entry_array, sizeof(Global_Leaderboard_Entry) * MAX_NUM_GLOBAL_LEADERBOARD);
+    // create layers for global scores
+    for (uint8_t i = 0; i < MAX_NUM_GLOBAL_LEADERBOARD; i++) {
+      item_frame.origin.y = scroll_layer_content_height;
+      s_leaderboard_layer_array[s_leaderboard_scroll_num_layers] = layer_create_with_data(item_frame, sizeof(Global_Leaderboard_Entry));
+      layer_entry = layer_get_data(s_leaderboard_layer_array[s_leaderboard_scroll_num_layers]);
+      layer_entry->score = global_leaderboard_entry_array[i].score;
+      layer_entry->level = global_leaderboard_entry_array[i].level;
+      layer_entry->datetime = global_leaderboard_entry_array[i].datetime;
+      strncpy(layer_entry->name, global_leaderboard_entry_array[i].name, MAX_LBE_NAME_LENGTH);
+      layer_set_update_proc(s_leaderboard_layer_array[s_leaderboard_scroll_num_layers], leaderboard_entry_layer_draw);
+
+      scroll_layer_add_child(s_leaderboard_scroll_layer, s_leaderboard_layer_array[s_leaderboard_scroll_num_layers]);
+      s_leaderboard_scroll_num_layers++;
+      scroll_layer_content_height += item_frame.size.h;
+    }
+  } else {
+    // if the global leaderboard is not persisted then the user has not yet made a name for themselves.
+    GRect prompt_message_frame = bounds;
+    prompt_message_frame.origin.y = scroll_layer_content_height;
+    prompt_message_frame.size.h = LEADERBOARD_PROMPT_FOR_NAME_HEIGHT;
+    s_leaderboard_layer_array[s_leaderboard_scroll_num_layers] = layer_create_with_data(prompt_message_frame, 300);
+    char *prompt_message = layer_get_data(s_leaderboard_layer_array[s_leaderboard_scroll_num_layers]);
+    strncpy(prompt_message, "Please create a name for yourself in order to load the global high scores.\n\n"
+                            "Go to the Pebble App on your phone, open the settings menu for block breaker and "
+                            "enter a unique name or alias for yourself.\n\n"
+                            "Then re-open the HI SCORES page to see the global high scores.", 300);
+    layer_set_update_proc(s_leaderboard_layer_array[s_leaderboard_scroll_num_layers], leaderboard_prompt_message_layer_draw);
+    scroll_layer_add_child(s_leaderboard_scroll_layer, s_leaderboard_layer_array[s_leaderboard_scroll_num_layers]);
+    s_leaderboard_scroll_num_layers++;
+    scroll_layer_content_height += prompt_message_frame.size.h;
+  }
+
+
+  bounds.size.h = scroll_layer_content_height;
   scroll_layer_set_content_size(s_leaderboard_scroll_layer, bounds.size);
 }
 
 static void leaderboard_window_unload(Window *window) {
-  for (uint8_t i = 0; i < MAX_NUM_LEADERBOARD; i++) {
+  for (uint8_t i = 0; i < s_leaderboard_scroll_num_layers; i++) {
     layer_destroy(s_leaderboard_layer_array[i]);
   }
-  text_layer_destroy(s_leaderboard_title_layer);
+  free(s_leaderboard_layer_array);
+  s_leaderboard_layer_array = NULL;
   scroll_layer_destroy(s_leaderboard_scroll_layer);
 }
 
+static void in_recv_handler(DictionaryIterator *iterator, void *context) {
+  // Get Tuple
+  Tuple *t = dict_read_first(iterator);
+  uint8_t leaderboard_array_length = MAX_NUM_GLOBAL_LEADERBOARD;
+  Global_Leaderboard_Entry *leaderboard_array = NULL;
+  while (t != NULL) {
+    uint32_t tuple_key = (int)(t->key);
+    if (tuple_key == APP_MSG_READY_KEY) {
+      send_leaderboard_to_server();
+      return;
+    } else if (tuple_key == APP_MSG_NAME_STR_KEY) {
+      APP_LOG(APP_LOG_LEVEL_DEBUG, "persist name: %s", t->value->cstring);
+      persist_write_string(P_NAME_KEY, t->value->cstring);
+    } else if (tuple_key >= APP_MSG_LBE_OFFSET) {
+      if (leaderboard_array == NULL) {
+        leaderboard_array = (Global_Leaderboard_Entry *) malloc(leaderboard_array_length * sizeof(Global_Leaderboard_Entry));
+      }
+      uint8_t lbe_index = (tuple_key - APP_MSG_LBE_OFFSET) / APP_MSG_LBE_NUM_ELEMENTS;
+      if (lbe_index < MAX_NUM_GLOBAL_LEADERBOARD) {
+        uint8_t lbe_key = (tuple_key - APP_MSG_LBE_OFFSET) % APP_MSG_LBE_NUM_ELEMENTS;
+        if (lbe_key == APP_MSG_LBE_DATETIME_UINT_KEY) {
+          leaderboard_array[lbe_index].datetime = (time_t)(t->value->uint32);
+        } else if (lbe_key == APP_MSG_LBE_LEVEL_UINT8_KEY) {
+          leaderboard_array[lbe_index].level = (uint8_t)(t->value->uint8);
+        } else if (lbe_key == APP_MSG_LBE_SCORE_UINT32_KEY) {
+          leaderboard_array[lbe_index].score = (uint32_t)(t->value->uint32);
+        } else if (lbe_key == APP_MSG_LBE_NAME_STR_KEY) {
+          strncpy(leaderboard_array[lbe_index].name, t->value->cstring, MAX_LBE_NAME_LENGTH);
+        }
+
+        APP_LOG(APP_LOG_LEVEL_DEBUG, "persist leaderboard i: %d, lvl: %d, dt: %d, score: %d, name: %s", lbe_index, 
+          leaderboard_array[lbe_index].level, (int) leaderboard_array[lbe_index].datetime, (int) leaderboard_array[lbe_index].score,
+          leaderboard_array[lbe_index].name);
+      }
+    }
+
+    t = dict_read_next(iterator);
+  }
+  if (leaderboard_array != NULL) {
+    persist_delete(P_GLOBAL_LEADERBOARD_KEY);
+    persist_write_data(P_GLOBAL_LEADERBOARD_KEY, leaderboard_array, sizeof(Global_Leaderboard_Entry) * MAX_NUM_GLOBAL_LEADERBOARD);
+    free(leaderboard_array);
+  }
+}
+
 static void init(void) {
+  app_message_register_inbox_received((AppMessageInboxReceived) in_recv_handler);
+  app_message_open(app_message_inbox_size_maximum(), app_message_outbox_size_maximum());
+
   s_menu_window = window_create();
   s_game_window = window_create();
   s_leaderboard_window = window_create();
