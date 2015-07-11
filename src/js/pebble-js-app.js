@@ -94,11 +94,13 @@ function flatten_server_LBE_JSON(serverJSON) {
     // console.log("" + JSON.stringify(serverJSON));
     var appMessageJSON = {};
     for (var i = 0; i < serverJSON.scores.length; i++) {
-      var offset = APP_MSG_LBE_OFFSET + APP_MSG_LBE_NUM_ELEMENTS*i;
-      appMessageJSON[offset + APP_MSG_LBE_DATETIME_UINT_KEY] = serverJSON.scores[i].datetime;
-      appMessageJSON[offset + APP_MSG_LBE_SCORE_UINT32_KEY] = serverJSON.scores[i].score;
-      appMessageJSON[offset + APP_MSG_LBE_LEVEL_UINT8_KEY] = serverJSON.scores[i].level;
-      appMessageJSON[offset + APP_MSG_LBE_NAME_STR_KEY] = serverJSON.scores[i].name;
+      if (serverJSON.scores[i] !== null && serverJSON.scores[i] !== undefined) {
+        var offset = APP_MSG_LBE_OFFSET + APP_MSG_LBE_NUM_ELEMENTS*i;
+        appMessageJSON[offset + APP_MSG_LBE_DATETIME_UINT_KEY] = serverJSON.scores[i].datetime;
+        appMessageJSON[offset + APP_MSG_LBE_SCORE_UINT32_KEY] = serverJSON.scores[i].score;
+        appMessageJSON[offset + APP_MSG_LBE_LEVEL_UINT8_KEY] = serverJSON.scores[i].level;
+        appMessageJSON[offset + APP_MSG_LBE_NAME_STR_KEY] = serverJSON.scores[i].name;
+      }
     }
     if (serverJSON.name !== undefined && serverJSON.name !== null) {
       appMessageJSON[APP_MSG_NAME_STR_KEY] = serverJSON.name;
