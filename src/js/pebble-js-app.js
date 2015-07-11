@@ -19,9 +19,6 @@ function isStringBlank(str){
 }
 
 Pebble.addEventListener("ready", function(e) {
-  localStorage.removeItem(P_ACCOUNT_TOKEN_KEY);
-  localStorage.removeItem(P_NAME_KEY);
-  localStorage.removeItem(P_USER_ID_KEY);
   console.log("PebbleKit JS ready!");
   var accountToken = Pebble.getAccountToken();
   if (!isStringBlank(accountToken)) {

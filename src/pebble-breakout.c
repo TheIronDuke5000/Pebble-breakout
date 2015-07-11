@@ -1734,7 +1734,7 @@ static void send_leaderboard_to_server() {
   DictionaryIterator *iter;
   app_message_outbox_begin(&iter);
   if (iter == NULL) {
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "null iter");
+    // APP_LOG(APP_LOG_LEVEL_DEBUG, "null iter");
     return;
   }
 
@@ -1746,7 +1746,7 @@ static void send_leaderboard_to_server() {
   }
 
   dict_write_end(iter);
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "send leaderboard to server");
+  // APP_LOG(APP_LOG_LEVEL_DEBUG, "send leaderboard to server");
 
   app_message_outbox_send();
 }
@@ -1897,8 +1897,6 @@ static void menu_window_load(Window *window) {
   char buffer[20];
   persist_read_string(P_NAME_KEY, buffer, 20);
 
-  APP_LOG(APP_LOG_LEVEL_DEBUG, "name: %s", buffer);
-
   text_layer_set_text(s_menu_title_layer, "BLOCK BREAKER");
 
   text_layer_set_background_color(s_menu_title_layer, GColorWhite);
@@ -1990,7 +1988,6 @@ static void leaderboard_window_load(Window *window) {
 
   Leaderboard_Entry leaderboard_entry_array[MAX_NUM_LOCAL_LEADERBOARD] = {default_entry};
   if (persist_exists(P_LOCAL_LEADERBOARD_KEY)) {
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "persist exists");
     persist_read_data(P_LOCAL_LEADERBOARD_KEY, leaderboard_entry_array, sizeof(Leaderboard_Entry) * MAX_NUM_LOCAL_LEADERBOARD);
   }
 
@@ -2036,7 +2033,6 @@ static void leaderboard_window_load(Window *window) {
 
   Global_Leaderboard_Entry global_leaderboard_entry_array[MAX_NUM_GLOBAL_LEADERBOARD] = {global_default_entry};
   if (persist_exists(P_GLOBAL_LEADERBOARD_KEY)) {
-    APP_LOG(APP_LOG_LEVEL_DEBUG, "persist exists");
     persist_read_data(P_GLOBAL_LEADERBOARD_KEY, global_leaderboard_entry_array, sizeof(Global_Leaderboard_Entry) * MAX_NUM_GLOBAL_LEADERBOARD);
     // create layers for global scores
     for (uint8_t i = 0; i < MAX_NUM_GLOBAL_LEADERBOARD; i++) {
@@ -2095,7 +2091,7 @@ static void in_recv_handler(DictionaryIterator *iterator, void *context) {
       send_leaderboard_to_server();
       return;
     } else if (tuple_key == APP_MSG_NAME_STR_KEY) {
-      APP_LOG(APP_LOG_LEVEL_DEBUG, "persist name: %s", t->value->cstring);
+      // APP_LOG(APP_LOG_LEVEL_DEBUG, "persist name: %s", t->value->cstring);
       persist_write_string(P_NAME_KEY, t->value->cstring);
     } else if (tuple_key >= APP_MSG_LBE_OFFSET) {
       if (leaderboard_array == NULL) {
@@ -2114,9 +2110,9 @@ static void in_recv_handler(DictionaryIterator *iterator, void *context) {
           strncpy(leaderboard_array[lbe_index].name, t->value->cstring, MAX_LBE_NAME_LENGTH);
         }
 
-        APP_LOG(APP_LOG_LEVEL_DEBUG, "persist leaderboard i: %d, lvl: %d, dt: %d, score: %d, name: %s", lbe_index, 
-          leaderboard_array[lbe_index].level, (int) leaderboard_array[lbe_index].datetime, (int) leaderboard_array[lbe_index].score,
-          leaderboard_array[lbe_index].name);
+        // APP_LOG(APP_LOG_LEVEL_DEBUG, "persist leaderboard i: %d, lvl: %d, dt: %d, score: %d, name: %s", lbe_index, 
+        //   leaderboard_array[lbe_index].level, (int) leaderboard_array[lbe_index].datetime, (int) leaderboard_array[lbe_index].score,
+        //   leaderboard_array[lbe_index].name);
       }
     }
 
