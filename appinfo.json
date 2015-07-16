@@ -49,6 +49,11 @@
         "type": "raw"
       },
       {
+        "name": "MAP_ONE_BLOCK",
+        "file": "map_one_block.dat",
+        "type": "raw"
+      },
+      {
         "name": "MAP_SPACE_INVADER",
         "file": "map_space_invader.dat",
         "type": "raw"

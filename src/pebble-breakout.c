@@ -68,43 +68,17 @@
 
 #include <pebble.h>
 
-#define MAX_NUM_POWERUP_DROPS 10  // maximum number of currently dropping powerups
-#define MAX_NUM_LASER_FIRE 10     // maximum number of laser fire in the air
+#define MAX_NUM_POWERUP_DROPS 5  // maximum number of currently dropping powerups
+#define MAX_NUM_LASER_FIRE 5     // maximum number of laser fire in the air
 #define PADDLE_MAX_SPEED 8
 #define HOLD_AIM_INC TRIG_MAX_ANGLE/0x28
 #define BALL_TIME_PER_DIST 18
 #define POWERUP_TIME_PER_DIST 50
 #define LASER_FIRE_TIME_PER_DIST 6
 #define BOMB_BLAST_RADIUS 20
-#define MAX_NUM_BLOCKS 120
 #define MAX_NUM_LOCAL_LEADERBOARD 5
 #define MAX_NUM_GLOBAL_LEADERBOARD 9
 #define MAX_LBE_NAME_LENGTH 18    // 17 characters + 1 null char to terminate
-
-// #define DEBUG
-
-#ifdef DEBUG
-static TextLayer *s_text_layer;
-static char s_text_layer_text[20];
-#endif
-
-
-// WARNING
-// dont change these structs unless absolutely necessary.
-// they hold the leaderboard information.
-// if they are changed the leaderboard persist could become corrupted and users could lose their high scores
-typedef struct {
-  time_t datetime;    // unsigned int
-  uint32_t score;
-  uint8_t level;
-} Leaderboard_Entry;
-
-typedef struct {
-  time_t datetime;    // unsigned int
-  uint32_t score;
-  char name[MAX_LBE_NAME_LENGTH];
-  uint8_t level;
-} __attribute__((__packed__)) Global_Leaderboard_Entry;
 
 #define P_PADDLE_KEY 0        // int for x value of origin of paddle layer
 #define P_BALL_DATA_KEY 1     // array of 3 int16_t, [x, y, angle]    2 bytes per int16_t * 3 = 6 bytes 
@@ -143,6 +117,31 @@ typedef struct {
 #define LEADERBOARD_ENTRY_HEIGHT 40
 #define LEADERBOARD_SECTION_HEADER_HEIGHT 12
 #define LEADERBOARD_PROMPT_FOR_NAME_HEIGHT 160
+
+// #define DEBUG
+
+#ifdef DEBUG
+static TextLayer *s_text_layer;
+static char s_text_layer_text[20];
+#endif
+
+
+// WARNING
+// dont change these structs unless absolutely necessary.
+// they hold the leaderboard information.
+// if they are changed the leaderboard persist could become corrupted and users could lose their high scores
+typedef struct {
+  time_t datetime;    // unsigned int
+  uint32_t score;
+  uint8_t level;
+} Leaderboard_Entry;
+
+typedef struct {
+  time_t datetime;    // unsigned int
+  uint32_t score;
+  char name[MAX_LBE_NAME_LENGTH];
+  uint8_t level;
+} __attribute__((__packed__)) Global_Leaderboard_Entry;
 
 static Window *s_leaderboard_window;
 static ScrollLayer *s_leaderboard_scroll_layer;
@@ -212,7 +211,6 @@ static GRect s_laser_fire_frame = {
   .size = {3, 5}
 };
 
-
 static GRect s_leaderboard_score_rect = {
   .origin = {4, 2},
   .size = {144, 20}
@@ -260,6 +258,7 @@ static GRect s_leaderboard_name_rect = {
   static uint8_t s_num_maps = 9;
 #else
   static uint32_t s_map_resource_array[] = {
+    // RESOURCE_ID_MAP_ONE_BLOCK,
     RESOURCE_ID_MAP_FACE,
     RESOURCE_ID_MAP_SHIP,
     RESOURCE_ID_MAP_BALL,
@@ -547,9 +546,9 @@ static void block_layer_draw(Layer *layer, GContext *ctx) {
 
 static void ball_layer_draw(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
+  const int16_t half_h = bounds.size.h / 2;
 
   graphics_context_set_fill_color(ctx, GColorBlack);
-  const int16_t half_h = bounds.size.h / 2;
   graphics_fill_circle(ctx, GPoint(half_h, half_h), half_h);
 }
 
