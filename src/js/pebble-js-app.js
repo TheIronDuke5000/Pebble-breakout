@@ -113,8 +113,8 @@ function flatten_server_LBE_JSON(serverJSON) {
 function sync_with_server(localLeaderboardJSON) {
   var xmlhttp=new XMLHttpRequest();
   xmlhttp.onreadystatechange = function() {
-    console.log("recieved reply from server: " + xmlhttp.responseText);
     if (xmlhttp.readyState == 4 && xmlhttp.status == 200) {
+      console.log("recieved reply from server: " + xmlhttp.responseText);
       var responseJSON = JSON.parse(xmlhttp.responseText);
       var appMessageJSON = flatten_server_LBE_JSON(responseJSON);
       if (appMessageJSON !== null) {

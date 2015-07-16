@@ -389,20 +389,6 @@ static const char *s_powerup_names[] = {
   }
 #endif
 
-static int16_t max(int16_t a, int16_t b) {
-  if (a > b) {
-    return a;
-  }
-  return b;
-}
-
-static int16_t min(int16_t a, int16_t b) {
-  if (a < b) {
-    return a;
-  }
-  return b;
-}
-
 static int8_t sign(int32_t a) {
   if (a > 0) {
     return 1;
@@ -1126,24 +1112,26 @@ static void schedule_laser_animation(Layer *laser_fire_layer) {
 }
 
 static void shoot_laser() {
-  GRect paddle_frame = layer_get_frame(s_paddle_layer);
-  GRect frame = (GRect) {
-    .origin = {
-      s_laser_fire_frame.origin.x + paddle_frame.origin.x + paddle_frame.size.w/2,
-      s_laser_fire_frame.origin.y + paddle_frame.origin.y
-    },
-    .size = s_laser_fire_frame.size
-  };
+  if (s_num_laser_fire < MAX_NUM_LASER_FIRE) {
+    GRect paddle_frame = layer_get_frame(s_paddle_layer);
+    GRect frame = (GRect) {
+      .origin = {
+        s_laser_fire_frame.origin.x + paddle_frame.origin.x + paddle_frame.size.w/2,
+        s_laser_fire_frame.origin.y + paddle_frame.origin.y
+      },
+      .size = s_laser_fire_frame.size
+    };
 
-  Layer *laser_fire_layer = s_laser_fire_layer_array[s_num_laser_fire];
+    Layer *laser_fire_layer = s_laser_fire_layer_array[s_num_laser_fire];
 
-  layer_set_frame(laser_fire_layer, frame);
-  layer_set_hidden(laser_fire_layer, false);
-  layer_mark_dirty(laser_fire_layer);
+    layer_set_frame(laser_fire_layer, frame);
+    layer_set_hidden(laser_fire_layer, false);
+    layer_mark_dirty(laser_fire_layer);
 
-  schedule_laser_animation(laser_fire_layer);
+    schedule_laser_animation(laser_fire_layer);
 
-  s_num_laser_fire++;
+    s_num_laser_fire++;
+  }
 }
 
 static void powerup_anim_stopped_handler(Animation *animation, bool finished, void *context) {
@@ -1421,8 +1409,17 @@ static BallReflectionTypeEnum ball_reflection(GRect *ball_rect, int16_t *new_bal
             GPoint ball_centre = grect_center_point(&next_rect);
             GPoint block_centre = grect_center_point(&block_frame);
 
-            *new_ball_dir_angle = atan2_lookup(2*(ball_centre.y - block_centre.y),
-                                               ball_centre.x - block_centre.x);
+            int16_t angle45deg_away = atan2_lookup(2*(ball_centre.y - block_centre.y),
+                                                   ball_centre.x - block_centre.x);
+
+            int16_t diff_angle_reflect_X = abs(reflect_angle_X(*new_ball_dir_angle) - angle45deg_away);
+            int16_t diff_angle_reflect_Y = abs(reflect_angle_Y(*new_ball_dir_angle) - angle45deg_away);
+            if (diff_angle_reflect_X < diff_angle_reflect_Y) {
+              *new_ball_dir_angle = reflect_angle_X(*new_ball_dir_angle);
+            } else {
+              *new_ball_dir_angle = reflect_angle_Y(*new_ball_dir_angle);
+            }
+            // APP_LOG(APP_LOG_LEVEL_DEBUG, "diag reflect");
           }
           hit_block(diagonal_layer, NONE);
         }
@@ -1848,105 +1845,6 @@ static void game_window_unload(Window *window) {
   layer_destroy(s_main_layer);
 }
 
-static void menu_select(struct MenuLayer *menu_layer, MenuIndex *cell_index, void *callback_context) {
-  if (cell_index->row == 0) {
-    // resume
-    if (persist_exists(P_BLOCKS_DATA_START_KEY)) {
-      s_is_resume = true;
-      window_stack_push(s_game_window, true);
-    } else {
-      menu_layer_set_selected_index(s_menu_layer, (MenuIndex) {.section = 0, .row = 1}, MenuRowAlignCenter, false);
-    }
-  } else if (cell_index->row == 1) {
-    // new game
-    s_is_resume = false;
-    window_stack_push(s_game_window, true);
-    menu_layer_set_selected_index(s_menu_layer, (MenuIndex) {.section = 0, .row = 0}, MenuRowAlignCenter, false);
-  } else if (cell_index->row == 2) {
-    // leaderboard
-    window_stack_push(s_leaderboard_window, true);
-  }
-}
-
-static uint16_t menu_layer_get_num_rows(struct MenuLayer *menu_layer, uint16_t section_index, void *callback_context) {
-  if (section_index == 0) {
-    return 3;
-  }
-  return 0;
-}
-
-static int16_t menu_layer_get_cell_height(struct MenuLayer *menu_layer, MenuIndex *cell_index, void *callback_context) {
-  return MENU_CELL_HEIGHT;
-}
-
-static int16_t menu_layer_get_sep_height(struct MenuLayer *menu_layer, MenuIndex *cell_index, void *callback_context) {
-  return 1;
-}
-
-static void menu_window_load(Window *window) {
-  Layer *window_layer = window_get_root_layer(window);
-  GRect bounds = layer_get_bounds(window_layer);
-
-  GRect title_rect = bounds;
-  title_rect.origin.y = 4;
-  title_rect.size.h = 36;
-  s_menu_title_layer = text_layer_create(title_rect);
-
-
-  char buffer[20];
-  persist_read_string(P_NAME_KEY, buffer, 20);
-
-  text_layer_set_text(s_menu_title_layer, "BLOCK BREAKER");
-
-  text_layer_set_background_color(s_menu_title_layer, GColorWhite);
-  text_layer_set_text_color(s_menu_title_layer, GColorBlack);
-  text_layer_set_font(s_menu_title_layer, s_arcade_font_16);
-  text_layer_set_text_alignment(s_menu_title_layer, GTextAlignmentCenter);
-  layer_add_child(window_layer, (Layer *)s_menu_title_layer);
-
-  GRect bitmap_rect = bounds;
-  bitmap_rect.origin.y = title_rect.size.h + title_rect.origin.y;
-  bitmap_rect.size.h = 48;
-  s_menu_bitmap_layer = bitmap_layer_create(bitmap_rect);
-  s_logo_bitmap = gbitmap_create_with_resource(RESOURCE_ID_BALL_LOGO_PNG);
-  bitmap_layer_set_bitmap(s_menu_bitmap_layer, s_logo_bitmap);
-  bitmap_layer_set_alignment(s_menu_bitmap_layer, GAlignCenter);
-  layer_add_child(window_layer, (Layer *)s_menu_bitmap_layer);
-
-  s_menu_layer = menu_layer_create((GRect) {
-    .origin = {0, bounds.size.h - (MENU_CELL_HEIGHT*3 + 2)},
-    .size = {bounds.size.w, MENU_CELL_HEIGHT*3 + 2}
-  });
-  menu_layer_set_click_config_onto_window(s_menu_layer, window);
-  #ifdef PBL_PLATFORM_BASALT
-    menu_layer_set_normal_colors(s_menu_layer, GColorWhite, GColorBlack);
-    menu_layer_set_highlight_colors(s_menu_layer, GColorBlack, GColorWhite);
-
-    menu_layer_pad_bottom_enable(s_menu_layer,false);
-  #endif
-  menu_layer_set_callbacks(s_menu_layer, NULL, (MenuLayerCallbacks) {
-    .get_num_sections = NULL,
-    .get_num_rows = menu_layer_get_num_rows,
-    .get_cell_height = menu_layer_get_cell_height,
-    .draw_row = menu_draw_row,
-    .get_header_height = NULL,
-    .draw_header = NULL,
-    .get_separator_height = menu_layer_get_sep_height,
-    .draw_separator = menu_draw_separator,
-    .select_click = menu_select,
-    .select_long_click = NULL
-  });
-
-  layer_add_child(window_layer, (Layer *)s_menu_layer);
-}
-
-static void menu_window_unload(Window *window) {
-  text_layer_destroy(s_menu_title_layer);
-  gbitmap_destroy(s_logo_bitmap);
-  bitmap_layer_destroy(s_menu_bitmap_layer);
-  menu_layer_destroy(s_menu_layer);
-}
-
 static void leaderboard_window_load(Window *window) {
   Layer *window_layer = window_get_root_layer(window);
   GRect bounds = layer_get_bounds(window_layer);
@@ -2079,6 +1977,111 @@ static void leaderboard_window_unload(Window *window) {
   scroll_layer_destroy(s_leaderboard_scroll_layer);
 }
 
+static void menu_select(struct MenuLayer *menu_layer, MenuIndex *cell_index, void *callback_context) {
+  if (cell_index->row == 0) {
+    // resume
+    if (persist_exists(P_BLOCKS_DATA_START_KEY)) {
+      s_is_resume = true;
+      window_stack_push(s_game_window, true);
+    } else {
+      menu_layer_set_selected_index(s_menu_layer, (MenuIndex) {.section = 0, .row = 1}, MenuRowAlignCenter, false);
+    }
+  } else if (cell_index->row == 1) {
+    // new game
+    s_is_resume = false;
+    window_stack_push(s_game_window, true);
+    menu_layer_set_selected_index(s_menu_layer, (MenuIndex) {.section = 0, .row = 0}, MenuRowAlignCenter, false);
+  } else if (cell_index->row == 2) {
+    // leaderboard
+    s_leaderboard_window = window_create();
+    window_set_window_handlers(s_leaderboard_window, (WindowHandlers) {
+      .load = leaderboard_window_load,
+      .unload = leaderboard_window_unload,
+    });
+    window_stack_push(s_leaderboard_window, true);
+  }
+}
+
+static uint16_t menu_layer_get_num_rows(struct MenuLayer *menu_layer, uint16_t section_index, void *callback_context) {
+  if (section_index == 0) {
+    return 3;
+  }
+  return 0;
+}
+
+static int16_t menu_layer_get_cell_height(struct MenuLayer *menu_layer, MenuIndex *cell_index, void *callback_context) {
+  return MENU_CELL_HEIGHT;
+}
+
+static int16_t menu_layer_get_sep_height(struct MenuLayer *menu_layer, MenuIndex *cell_index, void *callback_context) {
+  return 1;
+}
+
+static void menu_window_load(Window *window) {
+  Layer *window_layer = window_get_root_layer(window);
+  GRect bounds = layer_get_bounds(window_layer);
+
+  GRect title_rect = bounds;
+  title_rect.origin.y = 4;
+  title_rect.size.h = 36;
+  s_menu_title_layer = text_layer_create(title_rect);
+
+
+  char buffer[20];
+  persist_read_string(P_NAME_KEY, buffer, 20);
+
+  text_layer_set_text(s_menu_title_layer, "BLOCK BREAKER");
+
+  text_layer_set_background_color(s_menu_title_layer, GColorWhite);
+  text_layer_set_text_color(s_menu_title_layer, GColorBlack);
+  text_layer_set_font(s_menu_title_layer, s_arcade_font_16);
+  text_layer_set_text_alignment(s_menu_title_layer, GTextAlignmentCenter);
+  layer_add_child(window_layer, (Layer *)s_menu_title_layer);
+
+  GRect bitmap_rect = bounds;
+  bitmap_rect.origin.y = title_rect.size.h + title_rect.origin.y;
+  bitmap_rect.size.h = 48;
+  s_menu_bitmap_layer = bitmap_layer_create(bitmap_rect);
+  s_logo_bitmap = gbitmap_create_with_resource(RESOURCE_ID_BALL_LOGO_PNG);
+  bitmap_layer_set_bitmap(s_menu_bitmap_layer, s_logo_bitmap);
+  bitmap_layer_set_alignment(s_menu_bitmap_layer, GAlignCenter);
+  layer_add_child(window_layer, (Layer *)s_menu_bitmap_layer);
+
+  s_menu_layer = menu_layer_create((GRect) {
+    .origin = {0, bounds.size.h - (MENU_CELL_HEIGHT*3 + 2)},
+    .size = {bounds.size.w, MENU_CELL_HEIGHT*3 + 2}
+  });
+  menu_layer_set_click_config_onto_window(s_menu_layer, window);
+  #ifdef PBL_PLATFORM_BASALT
+    menu_layer_set_normal_colors(s_menu_layer, GColorWhite, GColorBlack);
+    menu_layer_set_highlight_colors(s_menu_layer, GColorBlack, GColorWhite);
+
+    menu_layer_pad_bottom_enable(s_menu_layer,false);
+  #endif
+  menu_layer_set_callbacks(s_menu_layer, NULL, (MenuLayerCallbacks) {
+    .get_num_sections = NULL,
+    .get_num_rows = menu_layer_get_num_rows,
+    .get_cell_height = menu_layer_get_cell_height,
+    .draw_row = menu_draw_row,
+    .get_header_height = NULL,
+    .draw_header = NULL,
+    .get_separator_height = menu_layer_get_sep_height,
+    .draw_separator = menu_draw_separator,
+    .select_click = menu_select,
+    .select_long_click = NULL
+  });
+
+  layer_add_child(window_layer, (Layer *)s_menu_layer);
+}
+
+static void menu_window_unload(Window *window) {
+  text_layer_destroy(s_menu_title_layer);
+  gbitmap_destroy(s_logo_bitmap);
+  bitmap_layer_destroy(s_menu_bitmap_layer);
+  menu_layer_destroy(s_menu_layer);
+}
+
+
 static void in_recv_handler(DictionaryIterator *iterator, void *context) {
   // Get Tuple
   Tuple *t = dict_read_first(iterator);
@@ -2130,7 +2133,6 @@ static void init(void) {
 
   s_menu_window = window_create();
   s_game_window = window_create();
-  s_leaderboard_window = window_create();
 
   #ifdef PBL_PLATFORM_APLITE
     window_set_fullscreen(s_game_window, true);
@@ -2148,11 +2150,6 @@ static void init(void) {
   window_set_window_handlers(s_menu_window, (WindowHandlers) {
     .load = menu_window_load,
     .unload = menu_window_unload,
-  });
-
-  window_set_window_handlers(s_leaderboard_window, (WindowHandlers) {
-    .load = leaderboard_window_load,
-    .unload = leaderboard_window_unload,
   });
 
   const bool animated = true;
