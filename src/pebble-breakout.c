@@ -153,6 +153,7 @@ static TextLayer *s_menu_title_layer;
 static BitmapLayer *s_menu_bitmap_layer;
 static GBitmap *s_logo_bitmap;
 static Window *s_game_window;
+static TextLayer *s_game_over_text_layer;
 static Layer *s_status_layer;
 static Layer *s_main_layer;
 static Layer *s_ball_layer;
@@ -1008,6 +1009,10 @@ static void reset_paddle() {
 }
 
 static void btn_dir_rep_click_handler(ClickRecognizerRef recognizer, void *context) {
+  if (s_num_lives == 0) {
+    return;
+  }
+
   if ((s_active_powerup == HOLD || s_active_powerup == FIRST_BALL_HOLD) && s_is_holding_ball) {
     move_aim(recognizer);
   } else {
@@ -1016,6 +1021,9 @@ static void btn_dir_rep_click_handler(ClickRecognizerRef recognizer, void *conte
 }
 
 static void select_rep_click_handler(ClickRecognizerRef recognizer, void *context) {
+  if (s_num_lives == 0) {
+    window_stack_pop(true);
+  }
   if ((s_active_powerup == HOLD || s_active_powerup == FIRST_BALL_HOLD) && s_is_holding_ball) {
     release_ball_from_hold();
   } else if (s_active_powerup == LASER) {
@@ -1299,7 +1307,25 @@ static void hold_ball() {
 static void death() {
   persist_leaderboard_data();
   send_leaderboard_to_server();
-  window_stack_pop(true);
+
+  powerup_array_clear();
+  laser_fire_array_clear();
+
+  Layer *window_layer = window_get_root_layer(s_game_window);
+  GRect bounds = layer_get_bounds(window_layer);
+  GRect game_over_text_frame = bounds;
+  game_over_text_frame.size.h = 20;
+  game_over_text_frame.origin.y = 110;
+  game_over_text_frame.origin.x += 1;
+  s_game_over_text_layer = text_layer_create(game_over_text_frame);
+  text_layer_set_text(s_game_over_text_layer, "GAME OVER");
+  text_layer_set_background_color(s_game_over_text_layer, GColorWhite);
+  text_layer_set_text_color(s_game_over_text_layer, GColorBlack);
+  text_layer_set_font(s_game_over_text_layer, s_arcade_font_16);
+  text_layer_set_text_alignment(s_game_over_text_layer, GTextAlignmentCenter);
+  Layer *game_over_root_layer = text_layer_get_layer(s_game_over_text_layer);
+
+  layer_add_child(window_layer, (Layer *)s_game_over_text_layer);
 }
 
 static BallReflectionTypeEnum ball_reflection(GRect *ball_rect, int16_t *new_ball_dir_angle, bool *hit) {
@@ -1715,7 +1741,6 @@ static void persist_leaderboard_data() {
 }
 
 static void send_leaderboard_to_server() {
-
   Leaderboard_Entry default_entry = (Leaderboard_Entry) {
     .score = 0,
     .level = 0,
@@ -1798,6 +1823,8 @@ static void game_window_load(Window *window) {
   layer_set_update_proc(s_aim_layer, aim_layer_draw);
   layer_add_child(s_main_layer, s_aim_layer);
 
+  s_game_over_text_layer = NULL;
+
   powerup_layers_create();
   laser_fire_layers_create();
 
@@ -1837,6 +1864,10 @@ static void game_window_unload(Window *window) {
   layer_destroy(s_paddle_layer);
   layer_destroy(s_aim_layer);
   layer_destroy(s_status_layer);
+  if (s_game_over_text_layer != NULL) {
+    text_layer_destroy(s_game_over_text_layer);
+    s_game_over_text_layer = NULL;
+  }
 
   gpath_destroy(s_block_shadow_path);
   gbitmap_destroy(s_solid_block_bitmap);
