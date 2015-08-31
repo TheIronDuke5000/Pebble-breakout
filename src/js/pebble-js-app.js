@@ -14,6 +14,8 @@ var APP_MSG_LBE_LEVEL_UINT8_KEY = 2;
 var APP_MSG_LBE_NAME_STR_KEY = 3;
 var APP_MSG_LBE_NUM_ELEMENTS = 4;
 
+var serverURL = "http://blockbreaker-blockbreaker.rhcloud.com/";
+
 function isStringBlank(str){
   return str === undefined || str === null || str.match(/^\s*$/) !== null;
 }
@@ -129,7 +131,7 @@ function sync_with_server(localLeaderboardJSON) {
   };
   localLeaderboardJSON.account_token = storage_get_account_token();
   localLeaderboardJSON.id = storage_get_user_id();
-  xmlhttp.open("GET","https://lit-tundra-7074.herokuapp.com/update_scores" +
+  xmlhttp.open("GET", serverURL + "/update_scores" +
     "?account_token=" + storage_get_account_token() + "&id=" + storage_get_user_id() + 
     "&scores=" + JSON.stringify(localLeaderboardJSON),true);
   xmlhttp.send();
@@ -141,7 +143,7 @@ Pebble.addEventListener("showConfiguration", function(e) {
   if (oldName === null) {
     oldName = "";
   }
-  Pebble.openURL("https://lit-tundra-7074.herokuapp.com/pebble_config.html" + 
+  Pebble.openURL(serverURL + "/pebble_config.html" + 
                  "?account_token=" + storage_get_account_token() + "&id=" + storage_get_user_id() + "&name=" + oldName);
   // the server will attempt to match by account token first, failing that it will attempt to match by the stored user id
   // sending the old name to populate the name field.

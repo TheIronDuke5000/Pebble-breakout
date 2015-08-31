@@ -590,9 +590,9 @@ static void powerup_layer_draw(Layer *layer, GContext *ctx) {
 static void status_layer_draw(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
   GRect text_bounds = bounds;
-  text_bounds.size.w -= 2;
+  text_bounds.size.w -= 6;
   text_bounds.size.h = 8;
-  text_bounds.origin.x += 1;
+  text_bounds.origin.x += 3;
   text_bounds.origin.y += (STATUS_LAYER_HEIGHT - text_bounds.size.h)/2;
 
   graphics_context_set_fill_color(ctx, GColorBlack);
@@ -1409,11 +1409,11 @@ static BallReflectionTypeEnum ball_reflection(GRect *ball_rect, int16_t *new_bal
             GPoint ball_centre = grect_center_point(&next_rect);
             GPoint block_centre = grect_center_point(&block_frame);
 
-            int16_t angle45deg_away = atan2_lookup(2*(ball_centre.y - block_centre.y),
-                                                   ball_centre.x - block_centre.x);
+            uint16_t angle45deg_away = atan2_lookup(sign(ball_centre.y - block_centre.y),
+                                                    sign(ball_centre.x - block_centre.x));
 
-            int16_t diff_angle_reflect_X = abs(reflect_angle_X(*new_ball_dir_angle) - angle45deg_away);
-            int16_t diff_angle_reflect_Y = abs(reflect_angle_Y(*new_ball_dir_angle) - angle45deg_away);
+            uint16_t diff_angle_reflect_X = abs((int16_t) (reflect_angle_X(*new_ball_dir_angle) - angle45deg_away));
+            uint16_t diff_angle_reflect_Y = abs((int16_t) (reflect_angle_Y(*new_ball_dir_angle) - angle45deg_away));
             if (diff_angle_reflect_X < diff_angle_reflect_Y) {
               *new_ball_dir_angle = reflect_angle_X(*new_ball_dir_angle);
             } else {
