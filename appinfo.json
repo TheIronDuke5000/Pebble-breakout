@@ -54,6 +54,11 @@
         "type": "raw"
       },
       {
+        "name": "MAP_BB_LVL_ONE",
+        "file": "map_bb_lvl1.dat",
+        "type": "raw"
+      },
+      {
         "name": "MAP_SPACE_INVADER",
         "file": "map_space_invader.dat",
         "type": "raw"
